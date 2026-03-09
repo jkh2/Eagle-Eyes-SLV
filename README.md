@@ -98,8 +98,8 @@ No server. No backend. No build process. No subscription fees. Open the HTML fil
 
 ## Quickstart
 
-1. Download `EagleEyesSLV_v4.1.html`
-2. Open in any modern browser
+1. Open any modern browser (Chrome recommended)
+2. Click here  [➡️ **Try Eagle Eyes SLV**](https://jkh2.github.io/Eagle-Eyes-SLV/)
 3. That's it — weather, satellites, aircraft, earthquakes, fires, stream gauges, minerals, UFO sightings, and cameras load immediately with no keys required
 4. Optional: Add OpenAI key in the KEYS tab for AI Theater Brief
 5. Optional: Add Google Maps JS API key for live traffic overlay
