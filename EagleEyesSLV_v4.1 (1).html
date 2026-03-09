@@ -1,0 +1,2028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eagle Eyes SLV v4.1 — Full Situational Awareness</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.3/satellite.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap');
+
+:root {
+  --bg:         #050a05;
+  --panel:      #0a140a;
+  --panel2:     #0f1a0f;
+  --border:     #1e3a1e;
+  --border2:    #2a4a2a;
+  --accent:     #3a7a2a;
+  --accent2:    #5aaa3a;
+  --highlight:  #88dd55;
+  --text:       #aaccaa;
+  --muted:      #557755;
+  --danger:     #cc3333;
+  --warn:       #ccaa22;
+  --info:       #2288cc;
+  --purple:     #8855cc;
+  --cyan:       #22aacc;
+  --fire:       #cc5522;
+}
+
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family: 'Exo 2', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ── HEADER ── */
+#header {
+  position: fixed;
+  top:0; left:0; right:0;
+  height: 48px;
+  background: linear-gradient(90deg,#040904,#080f08);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  z-index: 1000;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+}
+
+#logo {
+  font-size: 14px;
+  font-weight:700;
+  color: var(--highlight);
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+#logo em { color: var(--accent2); font-style:normal; }
+
+.vsep { width:1px; height:22px; background:var(--border); margin:0 4px; flex-shrink:0; }
+
+/* Alert ticker */
+#alert-ticker {
+  flex:1;
+  overflow:hidden;
+  height:20px;
+  position:relative;
+  mask-image: linear-gradient(90deg,transparent,black 40px,black calc(100% - 40px),transparent);
+}
+#ticker-inner {
+  display:flex;
+  gap:40px;
+  white-space:nowrap;
+  animation: ticker 40s linear infinite;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 20px;
+}
+@keyframes ticker { from{transform:translateX(100%)} to{transform:translateX(-100%)} }
+.tick-item { display:inline-flex; align-items:center; gap:6px; }
+.tick-item.warn  { color:var(--warn); }
+.tick-item.danger{ color:var(--danger); }
+.tick-item.info  { color:var(--cyan); }
+
+#utc-clock { color:var(--highlight); font-size:12px; min-width:88px; text-align:right; }
+
+.hdr-btn {
+  background:transparent;
+  border:1px solid var(--border);
+  color:var(--muted);
+  padding:3px 9px;
+  border-radius:3px;
+  cursor:pointer;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;
+  transition:all .15s;
+  white-space:nowrap;
+  flex-shrink:0;
+}
+.hdr-btn:hover { border-color:var(--accent2); color:var(--highlight); background:rgba(58,122,42,.1); }
+
+/* ── MAP ── */
+#map { position:absolute; top:48px; left:0; right:0; bottom:36px; }
+
+/* ── SIDEBAR ── */
+#sidebar {
+  position:absolute;
+  top:58px; left:14px;
+  width:310px; height:600px;
+  min-width:240px; min-height:220px;
+  background:rgba(10,20,10,.97);
+  border:1px solid var(--border2);
+  border-radius:6px;
+  z-index:900;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  box-shadow:0 6px 32px rgba(0,0,0,.7);
+}
+
+#sidebar-hdr {
+  height:38px;
+  background:var(--panel2);
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  padding:0 12px;
+  cursor:move;
+  user-select:none;
+  gap:8px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;
+  color:var(--muted);
+  flex-shrink:0;
+}
+#sidebar-hdr::before { content:'⠿'; color:var(--accent2); font-size:13px; }
+
+#sidebar-tabs {
+  display:flex;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+  overflow-x:auto;
+}
+#sidebar-tabs::-webkit-scrollbar { display:none; }
+
+.tab-btn {
+  flex:1;
+  min-width:52px;
+  padding:7px 4px;
+  color:var(--muted);
+  cursor:pointer;
+  border:none;
+  background:transparent;
+  border-bottom:2px solid transparent;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;
+  letter-spacing:.3px;
+  transition:all .15s;
+  white-space:nowrap;
+}
+.tab-btn:hover { color:var(--text); }
+.tab-btn.active { color:var(--highlight); border-bottom-color:var(--accent2); background:rgba(58,122,42,.06); }
+
+.tab-content {
+  flex:1;
+  overflow-y:auto;
+  padding:10px;
+  display:none;
+  flex-direction:column;
+  gap:8px;
+}
+.tab-content.active { display:flex; }
+.tab-content::-webkit-scrollbar { width:3px; }
+.tab-content::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+
+/* Resize handles */
+.rh { position:absolute; background:transparent; z-index:10; }
+.rh-e  { right:0; top:4px; bottom:4px; width:5px; cursor:e-resize; }
+.rh-s  { bottom:0; left:4px; right:4px; height:5px; cursor:s-resize; }
+.rh-se { right:0; bottom:0; width:10px; height:10px; cursor:se-resize; }
+
+/* ── COMPONENTS ── */
+.section-lbl {
+  font-size:9px;
+  color:var(--muted);
+  letter-spacing:2px;
+  font-family:'Share Tech Mono',monospace;
+  padding:3px 0 2px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:2px;
+}
+
+.layer-row {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:7px 10px;
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:4px;
+}
+.layer-row label { flex:1; font-size:11px; cursor:pointer; }
+.layer-count { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--accent2); min-width:66px; text-align:right; }
+
+.toggle { position:relative; width:32px; height:17px; flex-shrink:0; }
+.toggle input { opacity:0; width:0; height:0; }
+.tslider {
+  position:absolute; inset:0;
+  background:#0a150a;
+  border:1px solid var(--border2);
+  border-radius:17px;
+  cursor:pointer;
+  transition:.2s;
+}
+.tslider::before {
+  content:'';
+  position:absolute;
+  width:11px; height:11px;
+  left:2px; top:2px;
+  background:var(--muted);
+  border-radius:50%;
+  transition:.2s;
+}
+.toggle input:checked + .tslider { background:rgba(58,170,58,.18); border-color:var(--accent2); }
+.toggle input:checked + .tslider::before { transform:translateX(15px); background:var(--highlight); }
+
+.btn {
+  background:var(--panel2);
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:8px 12px;
+  border-radius:4px;
+  cursor:pointer;
+  width:100%;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;
+  letter-spacing:.8px;
+  transition:all .15s;
+  text-align:left;
+}
+.btn:hover { border-color:var(--accent2); color:var(--highlight); background:rgba(58,122,42,.1); }
+.btn.primary { border-color:var(--accent); background:rgba(58,122,42,.15); }
+
+.info-box {
+  font-size:10px;
+  color:var(--muted);
+  line-height:1.6;
+  padding:6px 8px;
+  background:rgba(0,0,0,.3);
+  border-left:2px solid var(--border2);
+  border-radius:0 3px 3px 0;
+  font-family:'Share Tech Mono',monospace;
+}
+
+.key-grp { display:flex; flex-direction:column; gap:3px; }
+.key-grp label { font-size:9px; color:var(--muted); letter-spacing:1px; font-family:'Share Tech Mono',monospace; }
+.key-grp input {
+  background:#060d06;
+  border:1px solid var(--border);
+  color:var(--text);
+  padding:6px 9px;
+  border-radius:4px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;
+  width:100%;
+  transition:border-color .15s;
+}
+.key-grp input:focus { outline:none; border-color:var(--accent2); }
+
+/* Data cards */
+.data-card {
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:8px 10px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;
+}
+.data-card .card-title {
+  font-size:9px;
+  color:var(--muted);
+  letter-spacing:1.5px;
+  margin-bottom:5px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:3px;
+}
+.data-row { display:flex; justify-content:space-between; padding:2px 0; }
+.data-key { color:var(--muted); }
+.data-val { color:var(--highlight); text-align:right; max-width:160px; word-break:break-word; }
+.data-val.warn   { color:var(--warn); }
+.data-val.danger { color:var(--danger); }
+.data-val.info   { color:var(--cyan); }
+.data-val.fire   { color:var(--fire); }
+
+/* Pass list */
+.pass-item {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:5px 8px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:3px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;
+  cursor:pointer;
+  transition:border-color .15s;
+}
+.pass-item:hover { border-color:var(--accent2); }
+.pass-name { color:var(--text); }
+.pass-time { color:var(--accent2); }
+.pass-el   { color:var(--muted); font-size:9px; }
+
+/* Alert badge */
+.alert-badge {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:4px 8px;
+  border-radius:3px;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;
+  width:100%;
+  margin-bottom:2px;
+}
+.alert-badge.danger { background:rgba(204,51,51,.12); border:1px solid rgba(204,51,51,.3); color:var(--danger); }
+.alert-badge.warn   { background:rgba(204,170,34,.10); border:1px solid rgba(204,170,34,.25); color:var(--warn); }
+.alert-badge.info   { background:rgba(34,136,204,.10); border:1px solid rgba(34,136,204,.25); color:var(--cyan); }
+.alert-badge.ok     { background:rgba(58,122,42,.10);  border:1px solid rgba(58,122,42,.25);  color:var(--accent2); }
+
+/* ── INSPECTOR ── */
+#inspector {
+  position:absolute;
+  top:58px; right:14px;
+  width:250px;
+  background:rgba(10,20,10,.97);
+  border:1px solid var(--border2);
+  border-radius:6px;
+  display:none;
+  flex-direction:column;
+  z-index:950;
+  box-shadow:0 4px 24px rgba(0,0,0,.6);
+  max-height:400px;
+}
+#inspector-hdr {
+  padding:9px 13px;
+  background:var(--panel2);
+  border-bottom:1px solid var(--border);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;
+  color:var(--highlight);
+  border-radius:6px 6px 0 0;
+  flex-shrink:0;
+}
+#inspector-hdr span { cursor:pointer; color:var(--muted); font-size:16px; line-height:1; }
+#inspector-hdr span:hover { color:var(--danger); }
+#inspector-body { padding:12px; overflow-y:auto; font-size:11px; line-height:1.8; }
+
+/* ── MODAL ── */
+#modal {
+  position:fixed; inset:0;
+  background:rgba(3,6,3,.93);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:2000;
+}
+#modal.open { display:flex; }
+#modal-box {
+  background:var(--panel);
+  border:1px solid var(--accent);
+  width:580px;
+  max-width:92vw;
+  max-height:82vh;
+  border-radius:6px;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  box-shadow:0 10px 48px rgba(0,0,0,.9);
+}
+#modal-titlebar {
+  padding:11px 15px;
+  background:var(--panel2);
+  border-bottom:1px solid var(--border);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-family:'Share Tech Mono',monospace;
+  font-size:11px;
+  color:var(--highlight);
+}
+#modal-titlebar button {
+  background:none; border:none; cursor:pointer;
+  color:var(--muted); font-size:18px; line-height:1;
+}
+#modal-titlebar button:hover { color:var(--danger); }
+#modal-body {
+  padding:18px; overflow-y:auto;
+  font-size:12px; line-height:1.75;
+  white-space:pre-wrap;
+  font-family:'Share Tech Mono',monospace;
+}
+#modal-footer {
+  padding:9px 14px;
+  background:var(--panel2);
+  border-top:1px solid var(--border);
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
+
+/* ── BOTTOM BAR ── */
+#bottom-bar {
+  position:fixed;
+  bottom:0; left:0; right:0;
+  height:36px;
+  background:rgba(5,10,5,.97);
+  border-top:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  padding:0 12px;
+  gap:12px;
+  z-index:1000;
+  font-family:'Share Tech Mono',monospace;
+  font-size:10px;
+  color:var(--muted);
+}
+#coords-display { min-width:220px; }
+.bsep { flex:1; }
+
+/* ── LOADING ── */
+#loading {
+  position:fixed; inset:0;
+  background:var(--bg);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+  font-family:'Share Tech Mono',monospace;
+  gap:14px;
+}
+#loading h1 { font-size:24px; color:var(--highlight); letter-spacing:5px; }
+#loading p  { color:var(--muted); font-size:11px; }
+.loadbar { width:280px; height:2px; background:var(--panel2); border-radius:2px; overflow:hidden; }
+.loadbar-fill {
+  height:100%;
+  background:linear-gradient(90deg,var(--accent),var(--highlight));
+  border-radius:2px;
+  animation:lb 1.4s ease-in-out infinite;
+}
+@keyframes lb {
+  0%  { width:0%;  margin-left:0%; }
+  50% { width:55%; margin-left:22%; }
+  100%{ width:0%;  margin-left:100%; }
+}
+
+/* Status dots */
+.sdot {
+  width:6px; height:6px;
+  border-radius:50%;
+  background:var(--muted);
+  display:inline-block;
+  margin-right:4px;
+}
+.sdot.live   { background:var(--highlight); box-shadow:0 0 5px var(--highlight); animation:pulse 2s infinite; }
+.sdot.warn   { background:var(--warn); }
+.sdot.err    { background:var(--danger); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* Map icons */
+.ac-icon   { font-size:17px; filter:drop-shadow(0 0 4px rgba(136,221,85,.6)); }
+.sat-icon  { font-size:15px; filter:drop-shadow(0 0 5px rgba(34,170,204,.8)); }
+.eq-icon   { font-size:14px; filter:drop-shadow(0 0 5px rgba(204,85,34,.7)); }
+.fire-icon { font-size:14px; filter:drop-shadow(0 0 5px rgba(204,85,34,.9)); }
+.wx-icon   { font-size:13px; }
+
+/* Leaflet overrides */
+.leaflet-tooltip {
+  background:var(--panel2)!important;
+  border:1px solid var(--border2)!important;
+  color:var(--text)!important;
+  font-family:'Share Tech Mono',monospace!important;
+  font-size:10px!important;
+  padding:3px 7px!important;
+  border-radius:3px!important;
+  box-shadow:none!important;
+}
+.leaflet-popup-content-wrapper {
+  background:var(--panel2)!important;
+  border:1px solid var(--accent)!important;
+  color:var(--text)!important;
+  border-radius:4px!important;
+  font-family:'Share Tech Mono',monospace!important;
+  font-size:10px!important;
+}
+.leaflet-popup-tip { background:var(--accent)!important; }
+.leaflet-popup-close-button { color:var(--muted)!important; }
+
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--border2); border-radius:2px; }
+
+/* Ground track line */
+.ground-track { stroke:rgba(34,170,204,.5); stroke-width:1.5; stroke-dasharray:4,3; fill:none; }
+
+/* Cam grid images */
+#cam-grid img { transition: opacity .2s; }
+#cam-grid img:hover { opacity:.85; }
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <h1>🦅 EAGLE EYES SLV</h1>
+  <p id="load-msg">Initializing full situational awareness...</p>
+  <div class="loadbar"><div class="loadbar-fill"></div></div>
+  <p style="font-size:9px;color:var(--border2);margin-top:8px;">v4.1 — San Luis Valley GEINT</p>
+</div>
+
+<!-- Header -->
+<div id="header">
+  <div id="logo">🦅 EAGLE EYES <em>SLV</em></div>
+  <div class="vsep"></div>
+  <div id="alert-ticker"><div id="ticker-inner">Initializing data streams...</div></div>
+  <div class="vsep"></div>
+  <div id="utc-clock">--:--:-- UTC</div>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div id="sidebar-hdr">SITUATIONAL AWARENESS — DRAG TO MOVE</div>
+  <div id="sidebar-tabs">
+    <button class="tab-btn active" onclick="switchTab(0)">AIR</button>
+    <button class="tab-btn" onclick="switchTab(1)">SPACE</button>
+    <button class="tab-btn" onclick="switchTab(2)">WEATHER</button>
+    <button class="tab-btn" onclick="switchTab(3)">GROUND</button>
+    <button class="tab-btn" onclick="switchTab(4)">OSINT</button>
+    <button class="tab-btn" onclick="switchTab(5)">CAMS</button>
+    <button class="tab-btn" onclick="switchTab(6)">KEYS</button>
+  </div>
+
+  <!-- AIR TAB -->
+  <div class="tab-content active">
+    <div class="section-lbl">AIR DOMAIN</div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-ac" checked onchange="toggleLayer('ac')"><span class="tslider"></span></label>
+      <label for="tog-ac">✈ Aircraft (Airplanes.live)</label>
+      <div class="layer-count" id="cnt-ac">—</div>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-notam" onchange="toggleLayer('notam')"><span class="tslider"></span></label>
+      <label for="tog-notam">⛔ NOTAMs / TFRs</label>
+      <div class="layer-count" id="cnt-notam">—</div>
+    </div>
+
+    <div class="section-lbl">LIVE STATUS</div>
+    <div id="ac-status-card" class="data-card">
+      <div class="card-title">AIRCRAFT</div>
+      <div class="data-row"><span class="data-key">In Zone</span><span class="data-val" id="ac-inzone">—</span></div>
+      <div class="data-row"><span class="data-key">Last Update</span><span class="data-val" id="ac-updated">—</span></div>
+      <div class="data-row"><span class="data-key">API Status</span><span class="data-val" id="ac-apistatus">—</span></div>
+    </div>
+
+    <div class="section-lbl">ALTITUDE FILTER</div>
+    <div class="info-box">
+      Min altitude: <span id="alt-label">0 ft</span><br>
+      <input type="range" id="alt-filter" min="0" max="45000" step="1000" value="0"
+        style="width:100%;margin-top:6px;accent-color:var(--accent2);"
+        oninput="applyAltFilter(this.value)">
+    </div>
+  </div>
+
+  <!-- SPACE TAB -->
+  <div class="tab-content">
+    <div class="section-lbl">ORBITAL DOMAIN</div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-sats" checked onchange="toggleLayer('sats')"><span class="tslider"></span></label>
+      <label for="tog-sats">🛰 Live Satellites</label>
+      <div class="layer-count" id="cnt-sats">—</div>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-tracks" checked onchange="toggleLayer('tracks')"><span class="tslider"></span></label>
+      <label for="tog-tracks">〰 Ground Tracks</label>
+      <div class="layer-count" id="cnt-tracks">—</div>
+    </div>
+
+    <div class="section-lbl">UPCOMING PASSES OVER SLV</div>
+    <div id="pass-list"><div class="info-box">Calculating passes...</div></div>
+
+    <div class="section-lbl">SPACE WEATHER</div>
+    <div id="spacewx-card" class="data-card">
+      <div class="card-title">NOAA SPACE WEATHER</div>
+      <div class="data-row"><span class="data-key">Kp Index</span><span class="data-val" id="sw-kp">—</span></div>
+      <div class="data-row"><span class="data-key">Solar Wind</span><span class="data-val" id="sw-wind">—</span></div>
+      <div class="data-row"><span class="data-key">Aurora</span><span class="data-val" id="sw-aurora">—</span></div>
+      <div class="data-row"><span class="data-key">Signal Impact</span><span class="data-val" id="sw-signal">—</span></div>
+    </div>
+  </div>
+
+  <!-- WEATHER TAB -->
+  <div class="tab-content">
+    <div class="section-lbl">ATMOSPHERIC</div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-goes" onchange="toggleLayer('goes')"><span class="tslider"></span></label>
+      <label for="tog-goes">🌥 GOES-West Imagery</label>
+      <div class="layer-count" id="cnt-goes">—</div>
+    </div>
+
+    <div class="section-lbl">LOCAL CONDITIONS — ALAMOSA CO</div>
+    <div id="wx-card" class="data-card">
+      <div class="card-title">NWS / NOAA (NO KEY REQUIRED)</div>
+      <div class="data-row"><span class="data-key">Conditions</span><span class="data-val" id="wx-cond">—</span></div>
+      <div class="data-row"><span class="data-key">Temp</span><span class="data-val" id="wx-temp">—</span></div>
+      <div class="data-row"><span class="data-key">Wind</span><span class="data-val" id="wx-wind">—</span></div>
+      <div class="data-row"><span class="data-key">Humidity</span><span class="data-val" id="wx-hum">—</span></div>
+      <div class="data-row"><span class="data-key">Visibility</span><span class="data-val" id="wx-vis">—</span></div>
+      <div class="data-row"><span class="data-key">Pressure</span><span class="data-val" id="wx-pres">—</span></div>
+    </div>
+
+    <div class="section-lbl">FORECAST</div>
+    <div id="wx-forecast" class="info-box">Loading forecast...</div>
+  </div>
+
+  <!-- GROUND TAB -->
+  <div class="tab-content">
+    <div class="section-lbl">GROUND DOMAIN</div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-quake" checked onchange="toggleLayer('quake')"><span class="tslider"></span></label>
+      <label for="tog-quake">🔴 Earthquakes (USGS)</label>
+      <div class="layer-count" id="cnt-quake">—</div>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-fire" checked onchange="toggleLayer('fire')"><span class="tslider"></span></label>
+      <label for="tog-fire">🔥 Active Fires (NASA)</label>
+      <div class="layer-count" id="cnt-fire">—</div>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-water" checked onchange="toggleLayer('water')"><span class="tslider"></span></label>
+      <label for="tog-water">💧 Stream Gauges (USGS)</label>
+      <div class="layer-count" id="cnt-water">—</div>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-mineral" checked onchange="toggleLayer('mineral')"><span class="tslider"></span></label>
+      <label for="tog-mineral">💎 Mineral Deposits (USGS MRDS)</label>
+      <div class="layer-count" id="cnt-mineral">—</div>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-ufo" checked onchange="toggleLayer('ufo')"><span class="tslider"></span></label>
+      <label for="tog-ufo">👽 UFO Sightings (NUFORC)</label>
+      <div class="layer-count" id="cnt-ufo">—</div>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-traffic" onchange="toggleLayer('traffic')"><span class="tslider"></span></label>
+      <label for="tog-traffic">🚗 Road Traffic (needs Google key)</label>
+      <div class="layer-count" id="cnt-traffic">needs key</div>
+    </div>
+
+    <div class="section-lbl">STREAM GAUGES — LIVE</div>
+    <div id="water-list"><div class="info-box">Loading water data...</div></div>
+
+    <div class="section-lbl">RECENT SEISMIC — 200mi RADIUS</div>
+    <div id="quake-list"><div class="info-box">Loading seismic data...</div></div>
+
+    <div class="section-lbl">ACTIVE FIRES — COLORADO</div>
+    <div id="fire-list"><div class="info-box">Loading fire data...</div></div>
+  </div>
+
+  <!-- OSINT TAB -->
+  <div class="tab-content">
+    <div class="section-lbl">AI THEATER ANALYST</div>
+    <button class="btn primary" onclick="generateAISummary()">⚡ GENERATE FULL SA BRIEF</button>
+    <div class="info-box">Requires OpenAI key. Analyzes all live data streams: air, space, weather, seismic, fire — generates military-style situational brief.</div>
+
+    <div class="section-lbl">ALERTS SUMMARY</div>
+    <div id="alerts-panel"><div class="info-box">Aggregating alerts...</div></div>
+
+    <div class="section-lbl">EXTERNAL FEEDS</div>
+    <button class="btn" onclick="window.open('https://www.flightradar24.com/37.75,-105.9/10','_blank')">✈ FlightRadar24 — SLV</button>
+    <button class="btn" onclick="window.open('https://www.windy.com/?37.75,-105.9,9','_blank')">🌪 Windy — SLV</button>
+    <button class="btn" onclick="window.open('https://firms.modaps.eosdis.nasa.gov/map/','_blank')">🔥 NASA FIRMS Fire Map</button>
+    <button class="btn" onclick="window.open('https://earthquake.usgs.gov/earthquakes/map/?extent=35,-108&extent=40,-103','_blank')">🔴 USGS Earthquake Map</button>
+    <button class="btn" onclick="window.open('https://www.swpc.noaa.gov/','_blank')">☀ NOAA Space Weather</button>
+    <button class="btn" onclick="window.open('https://celestrak.org/cesium/orbit-viz.php','_blank')">🛰 Celestrak Orbit Viz</button>
+  </div>
+
+  <!-- CAMS TAB -->
+  <div class="tab-content">
+    <div class="section-lbl">CDOT TRAFFIC CAMERAS — SLV REGION</div>
+    <div class="info-box">Live CDOT camera snapshots. Images refresh from COtrip servers. Click any image to view full-size. No API key required.</div>
+
+    <div id="cam-grid" style="display:flex;flex-direction:column;gap:8px;">
+    </div>
+
+    <button class="btn" onclick="refreshCams()" style="margin-top:6px;">⟳ REFRESH ALL CAMERAS</button>
+
+    <div class="section-lbl" style="margin-top:8px;">EXTERNAL WEBCAMS</div>
+    <button class="btn" onclick="window.open('https://www.cotrip.org/camera/493/@-105.19913,37.61305,13?show=normalCameras','_blank')">📷 CDOT La Veta Pass</button>
+    <button class="btn" onclick="window.open('https://www.cotrip.org/camera/499/@-106.88548,37.5148,11?show=normalCameras','_blank')">📷 CDOT Wolf Creek Pass</button>
+    <button class="btn" onclick="window.open('https://www.windy.com/-Webcams/United-States-of-America/Colorado/La-Veta/webcams/1648822318?37.593,-105.204,9','_blank')">📷 Windy — La Veta Pass Webcam</button>
+    <button class="btn" onclick="window.open('https://wolfcreekski.com/webcams/','_blank')">📷 Wolf Creek Ski Area Cams</button>
+    <button class="btn" onclick="window.open('https://www.coloradowebcam.net/webcamtypes/traffic-webcams','_blank')">📷 ColoradoWebCam.net</button>
+  </div>
+
+  <!-- KEYS TAB -->
+  <div class="tab-content">
+    <div class="section-lbl">API KEYS (browser localStorage only)</div>
+    <div class="key-grp">
+      <label>GOOGLE MAPS JS API KEY (for traffic layer)</label>
+      <input id="k-goo" type="text" placeholder="AIza...">
+    </div>
+    <div class="key-grp">
+      <label>OPENAI KEY (for AI theater brief)</label>
+      <input id="k-oai" type="text" placeholder="sk-...">
+    </div>
+    <button class="btn primary" onclick="saveKeys()">💾 SAVE ALL KEYS</button>
+    <div class="info-box">Keys never leave your browser except to authenticate directly with each service API. Aircraft data via Airplanes.live requires no key.</div>
+
+    <div class="section-lbl">DATA REFRESH RATES</div>
+    <div class="info-box">
+      Aircraft: 15s · Satellites: 2s · TLEs: 1hr<br>
+      Weather: 10min · Earthquakes: 5min<br>
+      Fires: 15min · Space Wx: 5min · Cams: 2min
+    </div>
+  </div>
+
+  <div class="rh rh-e"  id="rh-e"></div>
+  <div class="rh rh-s"  id="rh-s"></div>
+  <div class="rh rh-se" id="rh-se"></div>
+</div>
+
+<!-- Inspector -->
+<div id="inspector">
+  <div id="inspector-hdr">
+    <span id="insp-title">ENTITY</span>
+    <span onclick="hideInspector()">×</span>
+  </div>
+  <div id="inspector-body"></div>
+</div>
+
+<!-- Modal -->
+<div id="modal">
+  <div id="modal-box">
+    <div id="modal-titlebar">
+      <span id="modal-title">—</span>
+      <button onclick="closeModal()">×</button>
+    </div>
+    <div id="modal-body"></div>
+    <div id="modal-footer">
+      <button class="hdr-btn" onclick="closeModal()">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom bar -->
+<div id="bottom-bar">
+  <span id="coords-display">Move cursor over map</span>
+  <div class="bsep"></div>
+  <span id="bottom-status">Initializing…</span>
+  <button class="hdr-btn" onclick="openInGoogleMaps()">⬡ GOOGLE MAPS</button>
+  <button class="hdr-btn" onclick="resetDashboard()">⟳ RESET</button>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// EAGLE EYES SLV v4.1 — FULL SITUATIONAL AWARENESS
+// Data sources (all free, no key unless noted):
+//   Aircraft:    Airplanes.live ADS-B (free, no key)
+//   Satellites:  Celestrak TLEs + satellite.js (visual catalog)
+//   Weather:     NWS/NOAA API (no key)
+//   Space Wx:    NOAA SWPC (no key)
+//   Earthquakes: USGS API (no key)
+//   Fires:       NASA FIRMS CSV (no key)
+//   GOES:        NOAA GOES-West tiles (no key)
+//   Water:       USGS Water Services (no key)
+//   Minerals:    USGS MRDS WFS (no key)
+//   UFO:         NUFORC/CORGIS sightings (embedded)
+//   Traffic:     Google Mutant (needs Maps JS API key)
+//   Webcams:     CDOT COtrip cameras (no key)
+// ═══════════════════════════════════════════════════
+
+// ── EMBEDDED UFO SIGHTINGS DATA (NUFORC via CORGIS) ──
+const UFOJSON = [{"c":"Canon City","s":"sphere","d":"Bright, round object flashed brilliant white before climbing at a high rate of speed.","la":38.4,"lo":-105.2167,"y":2014,"m":1},{"c":"Coal Creek","s":"sphere","d":"Large, yellowish white reflective sphere with no lights, no sound, no exhaust trail.","la":38.3611,"lo":-105.1478,"y":2014,"m":1},{"c":"Fountain","s":"circle","d":"Dark circular object surrounded by fiery, reddish color.","la":38.6822,"lo":-104.7003,"y":2014,"m":2},{"c":"Gunnison","s":"sphere","d":"A white sphere shaped object over Blue Mesa Reservoir moving North to South.","la":38.5458,"lo":-106.9247,"y":2014,"m":3},{"c":"Pueblo","s":"fireball","d":"8 orange, bright lights seen in Pueblo, Colorado, skies.","la":38.2544,"lo":-104.6086,"y":2014,"m":2},{"c":"Pueblo","s":"sphere","d":"Gold or orange sphere's appeared over Pueblo.","la":38.2544,"lo":-104.6086,"y":2014,"m":1},{"c":"Alamosa","s":"light","d":"We saw three (or possibly four) orange random glowing lights bigger than stars or airplanes at 8:14 PM, March seventh, 2013.","la":37.4694,"lo":-105.8694,"y":2013,"m":3},{"c":"Canon City","s":"chevron","d":"A MYSTERIOUS, UNIQUE SIGHTING OF THREE ALIENS IN BROAD DAYLIGHT.","la":38.4,"lo":-105.2167,"y":2013,"m":5},{"c":"Pueblo","s":"fireball","d":"Yellow fireballs spotted  in evenning sky west of Pueblo Co.","la":38.2544,"lo":-104.6086,"y":2013,"m":3},{"c":"Pueblo","s":"other","d":"Was looking towards the east waiting for our dogs to come n. My fiance and I observed a cloudy shape moving from west to east, material","la":38.2544,"lo":-104.6086,"y":2013,"m":12},{"c":"Pueblo","s":"triangle","d":"Bright Pink Stealth shaped ufo in CO","la":38.2544,"lo":-104.6086,"y":2013,"m":11},{"c":"Salida","s":"oval","d":"Orange oval object rapidly moving from north to south until it faded from view.","la":38.5347,"lo":-105.9983,"y":2013,"m":6},{"c":"Gunnison","s":"flash","d":"Strange lights observed at Castle Mountain area of Gunnison","la":38.5458,"lo":-106.9247,"y":2012,"m":10},{"c":"Pueblo","s":"circle","d":"Orange firery ball moving slowly across horizon.","la":38.2544,"lo":-104.6086,"y":2012,"m":5},{"c":"Pueblo","s":"fireball","d":"A fireball object moving thru the sky, Pueblo Co.","la":38.2544,"lo":-104.6086,"y":2012,"m":5},{"c":"Pueblo","s":"fireball","d":"Multicolored flashing ball of light (disco-ball).  ((NUFORC Note:  Possible observation of the star, Sirius, we suspect.  PD))","la":38.2544,"lo":-104.6086,"y":2012,"m":11},{"c":"Pueblo","s":"fireball","d":"12 fireball like objects northwest pueblo.preformed diffrent shapes.","la":38.2544,"lo":-104.6086,"y":2012,"m":9},{"c":"Pueblo","s":"oval","d":"Greenish bluish object sphere that flashed in the dusk sky and then descended to the Arkansas River Bottom","la":38.2544,"lo":-104.6086,"y":2012,"m":10},{"c":"Pueblo","s":"triangle","d":"Four lights, spaceship in triangle form.  One red blinking one in the middle, hovering motion","la":38.2544,"lo":-104.6086,"y":2012,"m":3},{"c":"Pueblo","s":"unknown","d":"Huge smoke like trail going across the sky","la":38.2544,"lo":-104.6086,"y":2012,"m":11},{"c":"Pueblo West","s":"circle","d":"Red lights that were hovering in the north.  2 came first moving north to south.  Appeared to hover in the sky.","la":38.35,"lo":-104.7222,"y":2012,"m":12},{"c":"Pueblo West","s":"sphere","d":"ORANGE &quot;FIREWORK&quot; SPHERE W/ TRIANGLE IN THE CENTER HOVERED IN PW 7 MINUTES, SILENTLY, THEN DISAPPEARED","la":38.35,"lo":-104.7222,"y":2012,"m":9},{"c":"Victor","s":"unknown","d":"Two strobe like lights flying in unison in southern sky over Victor, CO","la":38.71,"lo":-105.1394,"y":2012,"m":1},{"c":"Widefield","s":"light","d":"My daughter and I both know the bright moving lights lined up some turned red , some lined up could not be planes or stars.","la":38.7333,"lo":-104.7194,"y":2012,"m":11},{"c":"Canon City","s":"diamond","d":"Strange orange lights over canon city co","la":38.4,"lo":-105.2167,"y":2011,"m":12},{"c":"Fountain","s":"light","d":"Glowing Light Above Norad in Colorado Springs","la":38.6822,"lo":-104.7003,"y":2011,"m":12},{"c":"Fountain","s":"unknown","d":"5 Red light object floating over Fountain, CO","la":38.6822,"lo":-104.7003,"y":2011,"m":9},{"c":"Guffey","s":"fireball","d":"Large &amp; small fireballs ring in the New Year 2011 in CO","la":38.7511,"lo":-105.5208,"y":2011,"m":1},{"c":"Pueblo","s":"circle","d":"Orange lights in Colorado skies","la":38.2544,"lo":-104.6086,"y":2011,"m":7},{"c":"Pueblo","s":"triangle","d":"Creme white triangular craft and streak behind it.","la":38.2544,"lo":-104.6086,"y":2011,"m":8},{"c":"Pueblo West","s":"triangle","d":"two bright white lights with a translucent veil traveled from south west to North  horizon just before dawn.","la":38.35,"lo":-104.7222,"y":2011,"m":5},{"c":"Security","s":"chevron","d":"Lights hovering in sky over Security,  Colorado.","la":38.7583,"lo":-104.7425,"y":2011,"m":12},{"c":"Canon City","s":"cigar","d":"cigar shape object reflecting the sun's light","la":38.4,"lo":-105.2167,"y":2010,"m":9},{"c":"Colorado City","s":"triangle","d":"3 of us saw a bright white light triangle inside of a lighted rectangle directly overhead then it travelled directly south and disappea","la":37.9453,"lo":-104.8347,"y":2010,"m":9},{"c":"Fountain","s":"chevron","d":"V-Shaped that looked like a cluster of stars.","la":38.6822,"lo":-104.7003,"y":2010,"m":11},{"c":"Fountain","s":"oval","d":"Large Grey Metallic Object Over Cheyenne Mountain (NORAD) Area.","la":38.6822,"lo":-104.7003,"y":2010,"m":9},{"c":"Gunnison","s":"triangle","d":"At about 10:30 pm a friend and I, both western state college students were outside and happened to look up at the stars at the same tim","la":38.5458,"lo":-106.9247,"y":2010,"m":5},{"c":"Pueblo","s":"flash","d":"Red flash of light in the sky","la":38.2544,"lo":-104.6086,"y":2010,"m":10},{"c":"Canon City","s":"flash","d":"The objects appeared, disappeared then reappeared. The objects moved in a way that is very different than anything I have ever seen.","la":38.4,"lo":-105.2167,"y":2009,"m":12},{"c":"Crestone","s":"fireball","d":"04/29/09 Crestone Colorado White Fireball 10 seconds","la":37.9964,"lo":-105.6992,"y":2009,"m":4},{"c":"Fountain","s":"other","d":"The greenish glow has seemed to have an effect on me every time I think about it and its a good thing.","la":38.6822,"lo":-104.7003,"y":2009,"m":8},{"c":"Pueblo","s":"disk","d":"Dark, spinning object morphing into shapes.","la":38.2544,"lo":-104.6086,"y":2009,"m":3},{"c":"Pueblo","s":"sphere","d":"3 orange lights seen west of pueblo blvd and arkansas river","la":38.2544,"lo":-104.6086,"y":2009,"m":1},{"c":"Pueblo","s":"triangle","d":"three lights forming a triangle-shaped object.","la":38.2544,"lo":-104.6086,"y":2009,"m":11},{"c":"Pueblo West","s":"egg","d":"White-yellow egg shaped object moving in a NW direction over Pueblo CO.","la":38.35,"lo":-104.7222,"y":2009,"m":7},{"c":"Salida","s":"light","d":"Bright light with no sound passed above us","la":38.5347,"lo":-105.9983,"y":2009,"m":7},{"c":"Canon City","s":"disk","d":"lingering orange lights spotted in sky over Canon City, CO near Prison Facilities","la":38.4,"lo":-105.2167,"y":2008,"m":1},{"c":"Cuchara","s":"light","d":"Orange Light UFO while camping near Cuchara, Colorado","la":37.3792,"lo":-105.0997,"y":2008,"m":6},{"c":"Pagosa Springs","s":"light","d":"Bright light hovering over city.","la":37.2694,"lo":-107.0092,"y":2008,"m":11},{"c":"Pueblo","s":"light","d":"In the northwest sky, there were about seven lights moving slowly and flashing in and out if an extremely strange fashion.","la":38.2544,"lo":-104.6086,"y":2008,"m":10},{"c":"Pueblo","s":"oval","d":"By Pueblo Blvd. and Highway 50 red light 80 ft. high gives off steam trail as it descends to 50 ft., then disappears.","la":38.2544,"lo":-104.6086,"y":2008,"m":3},{"c":"Pueblo","s":"rectangle","d":"ON JUNE 21ST 2008 PUEBLO COLORADO ME MY WIFE AND 2 TEENAGE SONS WITNESSED A BRIGHT LIGHT AT APPROX 20:50.THE BRIGHT LIGHT WHICH COULD H","la":38.2544,"lo":-104.6086,"y":2008,"m":7},{"c":"San Acacio","s":"cylinder","d":"The lights where spaced in a perfect triangle","la":37.2139,"lo":-105.5639,"y":2008,"m":5},{"c":"Colorado City","s":"light","d":"Bright halogen colored light.","la":37.9453,"lo":-104.8347,"y":2007,"m":12},{"c":"Crestone","s":"triangle","d":"Triangular lights spotted over Challenger Peak Area from Crestone, Colorado.  ((NUFORC Note:  Sighting of Venus??  PD))","la":37.9964,"lo":-105.6992,"y":2007,"m":9},{"c":"Gunnison","s":"light","d":"giant bright white light moves autonomously and travels EXTREMELY fast. SILENT&#33","la":38.5458,"lo":-106.9247,"y":2007,"m":4},{"c":"Hooper","s":"disk","d":"Many watch as two UFO&#8217;s merge then separate","la":37.7428,"lo":-105.8747,"y":2007,"m":7},{"c":"Hooper","s":"disk","d":"Event happened during UFOlympics at UFO Watchtower and I was with Stan Romanek.","la":37.7428,"lo":-105.8747,"y":2007,"m":7},{"c":"Hooper","s":"disk","d":"3 craft sighted by several witnesses in clear daylight conditions.  Timepiece anomoly also occured","la":37.7428,"lo":-105.8747,"y":2007,"m":7},{"c":"Hooper","s":"disk","d":"Saw two craft in close proximity to each other, stationary at distance of several miles, with photographic confirmation, in daylight.","la":37.7428,"lo":-105.8747,"y":2007,"m":7},{"c":"Hooper","s":"other","d":"2 UFO's spotted over Hooper, Colorado","la":37.7428,"lo":-105.8747,"y":2007,"m":7},{"c":"Powderhorn","s":"disk","d":"A close night sky incounter.","la":38.2769,"lo":-107.0953,"y":2007,"m":7},{"c":"San Acacio","s":"diamond","d":"diamond shape translucent ship over New Mexico","la":37.2139,"lo":-105.5639,"y":2007,"m":9},{"c":"San Pablo","s":"diamond","d":"Incredibly pure white, bright light, hanging motionless, low in s sky just after sunset Sept. 22. ((NUFORC Note:  Jupiter?  PD))","la":37.1492,"lo":-105.3964,"y":2007,"m":9},{"c":"Trinidad","s":"disk","d":"Shiny object hovering, egg shaped , silver moving back &amp; forth in one spot  for about  14-15 minutes at 1:45pm  then vanished.","la":37.1694,"lo":-104.5,"y":2007,"m":6},{"c":"Trinidad","s":"light","d":"I observed a white light at what appeared to be a very high altitude, moving from West to East at an extremely high rate.","la":37.1694,"lo":-104.5,"y":2007,"m":3},{"c":"Canon City","s":"light","d":"Large bright light with aura, &quot;fireworks&quot; features, then several distinct white lights","la":38.4,"lo":-105.2167,"y":2006,"m":10},{"c":"Canon City","s":"teardrop","d":"single teardrop shape with flat bottom seen in mid-morning commute","la":38.4,"lo":-105.2167,"y":2006,"m":6},{"c":"Colorado City","s":"oval","d":"Right in front of my house I saw red and blue flashing lights at first I thought it was a plane but then I noticed that it was hovering","la":37.9453,"lo":-104.8347,"y":2006,"m":11},{"c":"Cripple Creek","s":"fireball","d":"Fireball object in Western Sky","la":38.7467,"lo":-105.1778,"y":2006,"m":10},{"c":"Fountain","s":"unknown","d":"Object hovered low over homes, we followed it for several minutes.","la":38.6822,"lo":-104.7003,"y":2006,"m":1},{"c":"Pueblo West","s":"light","d":"4-5 bright whitish-orange lights in Pueblo West, Colorado on 10/1/06 at 11:30 p.m.","la":38.35,"lo":-104.7222,"y":2006,"m":10},{"c":"Pueblo West","s":"sphere","d":"Strange Lights in the Sky  Over Colorado   October 1, 2006","la":38.35,"lo":-104.7222,"y":2006,"m":10},{"c":"Canon City","s":"light","d":"10/25/05 8:30pm several lights floating in sky and disappeared one by one","la":38.4,"lo":-105.2167,"y":2005,"m":10},{"c":"La Veta","s":"flash","d":"Unidentified Flying Object Flashing Lights above the ground.  ((NUFORC Note:  Possible sighting of Sirius in western sky??  PD))","la":37.505,"lo":-105.0072,"y":2005,"m":2},{"c":"Pueblo","s":"triangle","d":"TRIANGLE IN THE SKY","la":38.2544,"lo":-104.6086,"y":2005,"m":9},{"c":"Pueblo","s":"unknown","d":"A bright white light hovered over Pueblo Blvd. bridge over the Arkansas River, about 30 ft. above traffic, but no traffic seemed to see","la":38.2544,"lo":-104.6086,"y":2005,"m":10},{"c":"Trinidad","s":"sphere","d":"Object over Trinidad","la":37.1694,"lo":-104.5,"y":2005,"m":5},{"c":"Trinidad","s":"unknown","d":"2 large white lights moving N/NE. (We were facing North) Each light was about the size of Mars in the night sky.  There was no sound, n","la":37.1694,"lo":-104.5,"y":2005,"m":9},{"c":"Coaldale","s":"sphere","d":"Second orange sphere seen by family member","la":38.3656,"lo":-105.7572,"y":2004,"m":3},{"c":"Pueblo West","s":"flash","d":"Bright Flash of light and than darkness","la":38.35,"lo":-104.7222,"y":2004,"m":11},{"c":"Pueblo West","s":"light","d":"3 red parrellel lines cross highway, head for springs.","la":38.35,"lo":-104.7222,"y":2004,"m":3},{"c":"Salida","s":"sphere","d":"Dull orange sphere  above house","la":38.5347,"lo":-105.9983,"y":2004,"m":3},{"c":"Salida","s":"triangle","d":"3 Crafts Above Methodist Mountain in Colorado in August 2004&#33","la":38.5347,"lo":-105.9983,"y":2004,"m":8},{"c":"San Acacio","s":"light","d":"The lights seem to make some what of a large triangle","la":37.2139,"lo":-105.5639,"y":2004,"m":12},{"c":"Westcliffe","s":"triangle","d":"Triangle shaped object with3 points of light moved from north to south and then faded away, no noise.","la":38.1347,"lo":-105.4653,"y":2004,"m":5},{"c":"Farisita","s":"fireball","d":"Bright ball of light hovering, then 2 smaller ones darting around it","la":37.7447,"lo":-105.0708,"y":2003,"m":12},{"c":"Farisita","s":"light","d":"Like stars, but moving in different directions, then disappear.","la":37.7447,"lo":-105.0708,"y":2003,"m":11},{"c":"Pueblo","s":"light","d":"This object was definitely like nothing I have ever seen, and I observe the night sky nightly.","la":38.2544,"lo":-104.6086,"y":2003,"m":12},{"c":"Pueblo","s":"light","d":"Suspended orange lights in Northwest sky","la":38.2544,"lo":-104.6086,"y":2003,"m":10},{"c":"Pueblo West","s":"other","d":"Intense red light, spinning rapidly, droning sound.","la":38.35,"lo":-104.7222,"y":2003,"m":10},{"c":"Rye","s":"circle","d":"Circular Orange object","la":37.9236,"lo":-104.9297,"y":2003,"m":11},{"c":"Rye","s":"sphere","d":"Orange balls in the sky","la":37.9236,"lo":-104.9297,"y":2003,"m":10},{"c":"Weston","s":"light","d":"Bright star like light with blue and red lights shining downward while moving quickly in zig-zag patterns.","la":37.1328,"lo":-104.8483,"y":2003,"m":8},{"c":"Fountain","s":"chevron","d":"Just found your site,so I thought I would send in a sighting. This ocurred before 2002,but do not know exactly. I live about 10-15 mile","la":38.6822,"lo":-104.7003,"y":2002,"m":3},{"c":"Fountain","s":"triangle","d":"Triangle seen over Fountain Colorado outside Colorado Springs.","la":38.6822,"lo":-104.7003,"y":2002,"m":2},{"c":"Pueblo","s":"triangle","d":"Silent large flying v of 5 orange glowing patches gives fright.","la":38.2544,"lo":-104.6086,"y":2002,"m":10},{"c":"Pueblo West","s":"other","d":"A red laser-like light came out of a cloud...","la":38.35,"lo":-104.7222,"y":2002,"m":10},{"c":"Pueblo West","s":"rectangle","d":"RED LASER COMING OUT OF A RECTANGULAR CRAFT&#33","la":38.35,"lo":-104.7222,"y":2002,"m":10},{"c":"Walsenburg","s":"cylinder","d":"I was freaked out.","la":37.6242,"lo":-104.7797,"y":2002,"m":2},{"c":"La Veta","s":"changing","d":"On the horizon, bobbing and weaving changing colors with tenacity.","la":37.505,"lo":-105.0072,"y":2001,"m":7},{"c":"Pueblo","s":"fireball","d":"The picture window in my living room faces almost due north.  With the curtains drawn and the room lighted, I saw the outline of a fire","la":38.2544,"lo":-104.6086,"y":2001,"m":1},{"c":"Pueblo","s":"fireball","d":"Blue fireball lights up the skies of colorado and nebraska.  The fireball was spotted my many people","la":38.2544,"lo":-104.6086,"y":2001,"m":1},{"c":"Pueblo","s":"light","d":"Stange cluster of lights in SouthWestern Sky of Pueblo Colorado","la":38.2544,"lo":-104.6086,"y":2001,"m":12},{"c":"Pueblo","s":"triangle","d":"Multiple UFO sightings in Pueblo 09/22/01","la":38.2544,"lo":-104.6086,"y":2001,"m":9},{"c":"South Fork","s":"cigar","d":"Shinny Cigar shape in sky on clear day.","la":37.67,"lo":-106.6392,"y":2001,"m":10},{"c":"Aguilar","s":"rectangle","d":"two metallic boxes connected by a cylinder witnessed near Aguilar, Colorado","la":37.4028,"lo":-104.6528,"y":2000,"m":3},{"c":"Pueblo","s":"sphere","d":"Bright, yellow gold orb sighted west of Pueblo CO.","la":38.2544,"lo":-104.6086,"y":2000,"m":9},{"c":"Pueblo","s":"triangle","d":"Strange  craft over Pueblo Colorado","la":38.2544,"lo":-104.6086,"y":2000,"m":9},{"c":"Pueblo","s":"unknown","d":"Fast moving object  in middle of day","la":38.2544,"lo":-104.6086,"y":2000,"m":12},{"c":"Victor","s":"cylinder","d":"colored lights behind Pike's Peak","la":38.71,"lo":-105.1394,"y":2000,"m":9},{"c":"Alamosa","s":"light","d":"Object like a star moving at a rapid rate from the south east.  Pin of white light stopped directly overhead.  Without warning it expan","la":37.4694,"lo":-105.8694,"y":1999,"m":7},{"c":"Canon City","s":"flash","d":"While enjoying my am coffee and waiting for the sunrise, I was looking toward the southwest, when suddenly near one last remaining star","la":38.4,"lo":-105.2167,"y":1999,"m":7},{"c":"Canon City","s":"formation","d":"while traveling east on Hwy 50 I spotted a cluster (6 or 7?) of red lights in the northeast sky app. 9:00 angle. They appeared to be co","la":38.4,"lo":-105.2167,"y":1999,"m":1},{"c":"Canon City","s":"light","d":"Observed one bright light initially changing colors from violet to red and changing size from slightly smaller than Venus to nearly moo","la":38.4,"lo":-105.2167,"y":1999,"m":11},{"c":"Canon City","s":"light","d":"Two eye witness saw this. One in a car, a second in a high rise apartment.  13th floor.  The witness in the apartment said they landed","la":38.4,"lo":-105.2167,"y":1999,"m":1},{"c":"La Veta","s":"other","d":"Aircraft looked like a 747 three times its size.  At each wing tip were much smaller aircraft. A probe went to the ground from the bell","la":37.505,"lo":-105.0072,"y":1999,"m":1},{"c":"Pagosa Springs","s":"cigar","d":"Just before dark, I was looking off my porch to the west mountians and saw a blinking white light rising very slowly into the ski until","la":37.2694,"lo":-107.0092,"y":1999,"m":9},{"c":"Salida","s":"cigar","d":"Large cylindrical object steadily crossed the sky in the light of the moon.It did NOT display FAA blinking light.","la":38.5347,"lo":-105.9983,"y":1999,"m":7},{"c":"Salida","s":"cigar","d":"Shiny object heading west, 10 miles east of Salida.Planes appear to have chased it away.","la":38.5347,"lo":-105.9983,"y":1999,"m":7},{"c":"Trinidad","s":"fireball","d":"At first thought it was meteor but there was heavy cloud cover behind the path.  It formed an arc from what looked like NE to SW of Tri","la":37.1694,"lo":-104.5,"y":1999,"m":7},{"c":"Alamosa","s":"oval","d":"I am a police officer in alamosa colorado. on the date and time above, i was on routine patrol, i was traveling northbound along a coun","la":37.4694,"lo":-105.8694,"y":1998,"m":12},{"c":"Crestone","s":"light","d":"Large amber light at the top of the Sangre De Cristo range.  About 10,000 feet up the mountain.","la":37.9964,"lo":-105.6992,"y":1998,"m":2},{"c":"Pueblo","s":"light","d":"Stationary for duration, 3 lights flashing red , green and white , SSE 150 deg. ; WSW 240 deg. ; WNW 300 deg. (APPROX.) Between 9:30 an","la":38.2544,"lo":-104.6086,"y":1998,"m":3},{"c":"Pueblo West","s":"triangle","d":"It was about 11:30 at night, when my brother came into my room and told me to look out my window. He seemed very excited but also a lit","la":38.35,"lo":-104.7222,"y":1998,"m":5},{"c":"Crestone","s":"light","d":"Four balls of light travelling in sky, also see possible related New Mexico report for 10/3/96.","la":37.9964,"lo":-105.6992,"y":1996,"m":10},{"c":"Penrose","s":"other","d":"UFO shot down over military installation","la":38.425,"lo":-105.0222,"y":1996,"m":8},{"c":"Pueblo","s":"triangle","d":"Black Triangle in sky about 35 mi south of NORAD","la":38.2544,"lo":-104.6086,"y":1996,"m":8},{"c":"Penrose","s":"light","d":"Ball of light setting behind hills","la":38.425,"lo":-105.0222,"y":1995,"m":7},{"c":"Pueblo","s":"triangle","d":"3 Triangular craft passed directly overhead.  They were flying in a &quot;V&quot; formation at low altitude. There was no sound. These objects we","la":38.2544,"lo":-104.6086,"y":1995,"m":10},{"c":"Pagosa Springs","s":"cigar","d":"Huge long narrow aircraft with seven huge lights appeared 100 ft. above our car and followed us for approximately a half mile","la":37.2694,"lo":-107.0092,"y":1993,"m":4},{"c":"Pagosa Springs","s":"cigar","d":"I am a 68 year old retired president of an international trade association.My nephew and I  were driving on a remote hightway in the mo","la":37.2694,"lo":-107.0092,"y":1991,"m":4},{"c":"La Veta","s":"circle","d":"Well what happened was when I was about 5 I was coming back from a trip from my grandparents. I was looking out the windown and it was","la":37.505,"lo":-105.0072,"y":1985,"m":9},{"c":"Security","s":"unknown","d":"very low clouds all different colors,search lights were seen shining down out of the clouds on the houses and streets. this event was s","la":38.7583,"lo":-104.7425,"y":1979,"m":10},{"c":"Canon City","s":"oval","d":"Aug 1976  Canon City Colo      Disk shap  duration    2 min   just came over mountain and flew by","la":38.4,"lo":-105.2167,"y":1976,"m":9},{"c":"Fountain","s":"disk","d":"Stationary lit object hovered above trees.","la":38.6822,"lo":-104.7003,"y":1976,"m":3},{"c":"Salida","s":"disk","d":"Silver disc shaped close encounter with biological effects.","la":38.5347,"lo":-105.9983,"y":1974,"m":7},{"c":"Alamosa","s":"sphere","d":"I exited my mobile home east of Alamosa at 11:00AM  I was carrying a camera because I was teaching Photo Journalism at the local colleg","la":37.4694,"lo":-105.8694,"y":1968,"m":3},{"c":"Alamosa","s":"light","d":"Alamosa UFO disappears after flash of blinding light.","la":37.4694,"lo":-105.8694,"y":1967,"m":8}];
+
+// ── CONFIG ─────────────────────────────────────────
+const SLV = { lat:37.5, lon:-105.9, zoom:9 };
+const BBOX = { minLat:37.0, maxLat:38.5, minLon:-106.5, maxLon:-105.0 };
+// Alamosa NWS station
+const NWS_STATION   = 'KALS';
+const NWS_GRID_URL  = 'https://api.weather.gov/points/37.4694,-105.8700';
+
+// ── KEYS ───────────────────────────────────────────
+const K = {
+  goo: localStorage.getItem('slv_goo') || '',
+  oai: localStorage.getItem('slv_oai') || ''
+};
+
+// ── MAP STATE ──────────────────────────────────────
+let map;
+let layers = {
+  ac:      null,
+  sats:    null,
+  tracks:  null,
+  quake:   null,
+  fire:    null,
+  goes:    null,
+  traffic: null,
+  water:   null,
+  mineral: null,
+  ufo:     null
+};
+let acMarkers    = new Map();   // icao -> {marker, data}
+let satObjects   = [];
+let trackLines   = [];
+let altFilter    = 0;           // feet
+let googleReady  = false;
+let nwsGridURL   = null;
+
+// ── ALERTS STORE ───────────────────────────────────
+const alerts = [];
+
+// ══════════════════════════════════════════════════
+//  MAP INIT
+// ══════════════════════════════════════════════════
+function initMap() {
+  map = L.map('map', { zoomControl:true }).setView([SLV.lat, SLV.lon], SLV.zoom);
+
+  // Default basemap — ESRI satellite (better for rural Colorado)
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution:'© Esri World Imagery', maxZoom:18 }
+  ).addTo(map);
+
+  // All data layer groups
+  Object.keys(layers).forEach(k => {
+    if (k !== 'traffic' && k !== 'goes') {
+      layers[k] = L.layerGroup().addTo(map);
+    }
+  });
+  // tracks layer (SVG overlays)
+  layers.tracks = L.layerGroup().addTo(map);
+
+  // SLV zone boundary
+  L.rectangle(
+    [[BBOX.minLat,BBOX.minLon],[BBOX.maxLat,BBOX.maxLon]],
+    { color:'#3a7a2a', weight:1, fill:false, dashArray:'6,4', opacity:.4 }
+  ).addTo(map).bindTooltip('SLV Monitoring Zone');
+
+  // Coords display
+  map.on('mousemove', e => {
+    document.getElementById('coords-display').textContent =
+      `${e.latlng.lat.toFixed(5)}°N  ${Math.abs(e.latlng.lng).toFixed(5)}°W`;
+  });
+}
+
+// ══════════════════════════════════════════════════
+//  AIRCRAFT
+// ══════════════════════════════════════════════════
+async function fetchAircraft() {
+  // Airplanes.live: free, no key, no auth. Rate limit: 1 req/sec.
+  // /point/lat/lon/radius(nm) — max 250nm
+  const url = `https://api.airplanes.live/v2/point/${SLV.lat}/${SLV.lon}/80`;
+
+  try {
+    const r = await fetch(url);
+    if (r.status === 429) {
+      setVal('ac-apistatus', 'RATE LIMITED', 'warn');
+      return;
+    }
+    if (!r.ok) { setVal('ac-apistatus', 'API ERR '+r.status, 'err'); return; }
+    const d = await r.json();
+
+    layers.ac.clearLayers();
+    acMarkers.clear();
+
+    const aircraft = d.ac || [];
+    let shown = 0;
+
+    aircraft.forEach(a => {
+      const hex  = a.hex || '';
+      const call = (a.flight||'').trim() || a.r || hex;
+      const lat  = a.lat;
+      const lon  = a.lon;
+      const altBaro = a.alt_baro;  // feet or "ground"
+      const heading = a.track || a.true_heading || 0;
+      const speed   = a.gs;       // knots (ground speed)
+      const onGrnd  = altBaro === 'ground';
+      const category = a.category || '';
+      const vertRate = a.baro_rate; // ft/min
+      const squawk   = a.squawk || '';
+      const reg      = a.r || '';
+      const acType   = a.t || '';
+
+      if (lat == null || lon == null) return;
+
+      const altFt = onGrnd ? 0 : (typeof altBaro === 'number' ? altBaro : 0);
+
+      // Altitude filter
+      if (altFt < altFilter && !onGrnd) return;
+
+      // Bounding box filter (airplanes.live returns circle, trim to our box)
+      if (lat < BBOX.minLat || lat > BBOX.maxLat || lon < BBOX.minLon || lon > BBOX.maxLon) return;
+
+      shown++;
+      const isMil = a.dbFlags & 1; // military flag
+      const iconColor = isMil ? 'filter:drop-shadow(0 0 4px rgba(204,51,51,.8))' :
+                                'filter:drop-shadow(0 0 4px rgba(136,221,85,.6))';
+      const icon = L.divIcon({
+        className:'',
+        html:`<div class="ac-icon" style="transform:rotate(${heading}deg);${iconColor}">✈</div>`,
+        iconSize:[22,22], iconAnchor:[11,11]
+      });
+
+      const m = L.marker([lat,lon],{icon})
+        .bindTooltip(`${call}`, {permanent:false, direction:'top'})
+        .on('click', () => showInspector({
+          title: `✈ ${call}${isMil ? ' [MIL]' : ''}`,
+          rows:[
+            ['Hex/ICAO',  hex],
+            ['Registration', reg || '—'],
+            ['Type',      acType || '—'],
+            ['Squawk',    squawk || '—'],
+            ['Altitude',  onGrnd ? 'GROUND' : `${altFt.toLocaleString()} ft`],
+            ['Speed',     speed ? `${Math.round(speed)} kts GS` : '—'],
+            ['Heading',   `${Math.round(heading)}°`],
+            ['Vert Rate', vertRate ? `${vertRate} ft/min` : '—'],
+            ['Lat/Lon',   `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`],
+            ['Source',    a.type || 'ADS-B'],
+          ]
+        }));
+
+      layers.ac.addLayer(m);
+      acMarkers.set(hex, { marker:m, alt:altFt, callsign:call });
+    });
+
+    setVal('ac-inzone',    shown, shown > 0 ? 'info' : null);
+    setVal('ac-updated',   new Date().toUTCString().slice(-13,-4)+' UTC');
+    setVal('ac-apistatus', 'OK', 'ok');
+    document.getElementById('cnt-ac').textContent = `${shown} aircraft`;
+
+    // Alert for military aircraft
+    aircraft.forEach(a => {
+      if (a.dbFlags & 1 && a.lat && a.lon) {
+        addAlert('info', `🛩 Military: ${(a.flight||'').trim()||a.hex} ${a.t||''} ${a.alt_baro==='ground'?'GND':a.alt_baro+'ft'}`);
+      }
+    });
+
+    // Squawk alerts
+    aircraft.forEach(a => {
+      if (a.squawk === '7500') addAlert('danger', `🚨 HIJACK SQUAWK 7500: ${(a.flight||'').trim()||a.hex}`);
+      if (a.squawk === '7600') addAlert('warn',   `📡 COMMS LOST 7600: ${(a.flight||'').trim()||a.hex}`);
+      if (a.squawk === '7700') addAlert('danger',  `🚨 EMERGENCY 7700: ${(a.flight||'').trim()||a.hex}`);
+    });
+
+  } catch(e) {
+    setVal('ac-apistatus','FETCH ERR','err');
+    console.error('Aircraft error:',e);
+  }
+}
+
+function applyAltFilter(v) {
+  altFilter = parseInt(v);
+  document.getElementById('alt-label').textContent = parseInt(v).toLocaleString() + ' ft';
+  fetchAircraft();
+}
+
+// ══════════════════════════════════════════════════
+//  SATELLITES
+// ══════════════════════════════════════════════════
+// Satellite groups to load from Celestrak — covers all bright/visible sats
+const SAT_GROUPS = [
+  'visual',        // ~150 brightest satellites visible to naked eye
+  'stations',      // ISS, CSS, etc.
+  'resource',      // Earth resource sats (Landsat etc.)
+  'weather',       // Weather sats (NOAA, GOES, etc.)
+];
+
+// Additional high-interest individual sats (loaded separately if not in groups)
+const SAT_EXTRAS = [
+  { name:'Sentinel-1A',  catnr:39634 },
+];
+
+async function loadTLEs() {
+  layers.sats.clearLayers();
+  layers.tracks.clearLayers();
+  satObjects = [];
+  trackLines = [];
+
+  const loaded = new Set();
+
+  // Load bulk groups from Celestrak
+  for (const group of SAT_GROUPS) {
+    try {
+      const r = await fetch(
+        `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=TLE`
+      );
+      if (!r.ok) continue;
+      const txt = await r.text();
+      const lines = txt.trim().split('\n').map(l=>l.trim()).filter(Boolean);
+
+      // Parse 3-line sets
+      for (let i=0; i+2 < lines.length; i+=3) {
+        const name = lines[i].trim();
+        const tle1 = lines[i+1];
+        const tle2 = lines[i+2];
+
+        // Skip if we already have this sat
+        const catnr = tle1.substring(2,7).trim();
+        if (loaded.has(catnr)) continue;
+        loaded.add(catnr);
+
+        try {
+          const satrec = satellite.twoline2satrec(tle1, tle2);
+
+          const icon = L.divIcon({
+            className:'',
+            html:'<div class="sat-icon">🛰</div>',
+            iconSize:[20,20], iconAnchor:[10,10]
+          });
+
+          const m = L.marker([0,0],{icon})
+            .on('click', () => showInspector({
+              title:`🛰 ${name}`,
+              rows:[
+                ['NORAD ID',   catnr],
+                ['Incl.',      (satrec.inclo*180/Math.PI).toFixed(2)+'°'],
+                ['Epoch',      satrec.epochyr+'/'+Math.floor(satrec.epochdays)],
+                ['Status',     'TRACKING'],
+              ]
+            }));
+
+          const tLine = L.polyline([], { color:'rgba(34,170,204,.45)', weight:1.5, dashArray:'4,3' });
+          layers.tracks.addLayer(tLine);
+          layers.sats.addLayer(m);
+
+          satObjects.push({ name, satrec, marker:m, trackLine:tLine, lat:0, lon:0, alt:0, catnr });
+          trackLines.push(tLine);
+        } catch(e) {}
+      }
+    } catch(e) { console.error(`TLE group error ${group}:`, e); }
+  }
+
+  // Load any extras not already loaded
+  for (const sat of SAT_EXTRAS) {
+    if (loaded.has(String(sat.catnr))) continue;
+    try {
+      const r = await fetch(
+        `https://celestrak.org/NORAD/elements/gp.php?CATNR=${sat.catnr}&FORMAT=TLE`
+      );
+      if (!r.ok) continue;
+      const txt  = await r.text();
+      const lines = txt.trim().split('\n').map(l=>l.trim()).filter(Boolean);
+      if (lines.length < 3) continue;
+
+      const satrec = satellite.twoline2satrec(lines[1], lines[2]);
+      const icon = L.divIcon({ className:'', html:'<div class="sat-icon">🛰</div>', iconSize:[20,20], iconAnchor:[10,10] });
+      const m = L.marker([0,0],{icon}).on('click', () => showInspector({ title:`🛰 ${sat.name}`, rows:[['NORAD ID',sat.catnr],['Status','TRACKING']] }));
+      const tLine = L.polyline([], { color:'rgba(34,170,204,.45)', weight:1.5, dashArray:'4,3' });
+      layers.tracks.addLayer(tLine);
+      layers.sats.addLayer(m);
+      satObjects.push({ name:sat.name, satrec, marker:m, trackLine:tLine, lat:0, lon:0, alt:0, catnr:sat.catnr });
+    } catch(e) {}
+  }
+
+  document.getElementById('cnt-sats').textContent   = `${satObjects.length} sats`;
+  document.getElementById('cnt-tracks').textContent = `${satObjects.length} tracks`;
+
+  // Initial propagation + passes
+  propagateSats();
+  computePasses();
+}
+
+function propagateSats() {
+  if (!satObjects.length) return;
+  const now = new Date();
+  let nearbyCount = 0;
+
+  satObjects.forEach(sat => {
+    try {
+      const pv   = satellite.propagate(sat.satrec, now);
+      if (!pv||!pv.position) return;
+      const gmst = satellite.gstime(now);
+      const geo  = satellite.eciToGeodetic(pv.position, gmst);
+      const lon  = satellite.degreesLong(geo.longitude);
+      const lat  = satellite.degreesLat(geo.latitude);
+      const alt  = geo.height; // km
+
+      sat.lat = lat; sat.lon = lon; sat.alt = alt;
+      sat.marker.setLatLng([lat,lon]);
+
+      // Only draw ground tracks for sats within ~15° of SLV (roughly visible)
+      const dLat = Math.abs(lat - SLV.lat);
+      const dLon = Math.abs(lon - SLV.lon);
+      const nearby = (dLat < 15 && dLon < 20);
+
+      if (nearby) {
+        nearbyCount++;
+        // Update ground track: next 90 min in 2-min steps
+        const pts = [];
+        for (let m=0; m<=90; m+=2) {
+          const t = new Date(now.getTime() + m*60000);
+          const p2 = satellite.propagate(sat.satrec, t);
+          if (!p2||!p2.position) continue;
+          const g2 = satellite.eciToGeodetic(p2.position, satellite.gstime(t));
+          pts.push([satellite.degreesLat(g2.latitude), satellite.degreesLong(g2.longitude)]);
+        }
+        sat.trackLine.setLatLngs(pts);
+      } else {
+        sat.trackLine.setLatLngs([]); // clear tracks for distant sats
+      }
+
+      // Update tooltip
+      sat.marker.unbindTooltip();
+      sat.marker.bindTooltip(`${sat.name}\n${alt.toFixed(0)}km`, {permanent:false, direction:'top'});
+
+    } catch(e) {}
+  });
+}
+
+// ── Next passes over SLV (within 500km) ───────────
+function computePasses() {
+  const SLV_LAT = SLV.lat * Math.PI/180;
+  const SLV_LON = SLV.lon * Math.PI/180;
+  const passes = [];
+  const now = Date.now();
+
+  satObjects.forEach(sat => {
+    // Scan next 6 hours in 30-second steps
+    let inPass = false, passStart = null, maxEl = 0;
+
+    for (let s=0; s<=21600; s+=30) {
+      const t = new Date(now + s*1000);
+      try {
+        const pv = satellite.propagate(sat.satrec, t);
+        if (!pv||!pv.position) continue;
+        const gmst = satellite.gstime(t);
+        const geo  = satellite.eciToGeodetic(pv.position, gmst);
+        const satLat = geo.latitude;   // radians
+        const satLon = geo.longitude;  // radians
+        const satAlt = geo.height;     // km
+
+        // Angular separation (simplified elevation estimate)
+        const dLat = satLat - SLV_LAT;
+        const dLon = satLon - SLV_LON;
+        const dist = Math.sqrt(dLat*dLat + dLon*dLon) * 6371; // km surface
+        const el   = Math.atan2(satAlt, dist) * 180/Math.PI;
+
+        if (el > 5) {
+          if (!inPass) { inPass = true; passStart = t; maxEl = el; }
+          if (el > maxEl) maxEl = el;
+        } else {
+          if (inPass) {
+            passes.push({ name:sat.name, time:passStart, maxEl:Math.round(maxEl) });
+            inPass = false;
+          }
+        }
+      } catch(e) {}
+    }
+  });
+
+  // Sort by time
+  passes.sort((a,b) => a.time-b.time);
+
+  const el = document.getElementById('pass-list');
+  if (!passes.length) {
+    el.innerHTML = '<div class="info-box">No passes above 5° in next 6 hours.</div>';
+    return;
+  }
+
+  el.innerHTML = passes.slice(0,8).map(p => {
+    const mins = Math.round((p.time - now)/60000);
+    const timeStr = p.time.toUTCString().slice(-13,-4)+' UTC';
+    const urgency = mins < 10 ? 'warn' : '';
+    return `<div class="pass-item ${urgency}" onclick="">
+      <div>
+        <div class="pass-name">🛰 ${p.name}</div>
+        <div class="pass-el">Max El: ${p.maxEl}° · in ${mins}min</div>
+      </div>
+      <div class="pass-time">${timeStr}</div>
+    </div>`;
+  }).join('');
+
+  // Alert for ISS pass within 20 min
+  const issPass = passes.find(p => p.name.includes('ISS'));
+  if (issPass) {
+    const m = Math.round((issPass.time - now)/60000);
+    if (m < 20) addAlert('warn', `🛰 ISS passes SLV in ${m} min (max ${issPass.maxEl}°)`);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  WEATHER — NWS/NOAA (no key)
+// ══════════════════════════════════════════════════
+async function fetchWeather() {
+  try {
+    // Step 1: get grid coords for Alamosa
+    if (!nwsGridURL) {
+      const r1 = await fetch(NWS_GRID_URL, {
+        headers:{'User-Agent':'EagleEyesSLV/3.0 (contact@slv-geint.local)','Accept':'application/geo+json'}
+      });
+      if (!r1.ok) throw new Error('NWS grid lookup failed');
+      const d1 = await r1.json();
+      nwsGridURL = d1.properties.forecastHourly;
+    }
+
+    // Step 2: hourly observations via station
+    const obsURL = `https://api.weather.gov/stations/${NWS_STATION}/observations/latest`;
+    const r2 = await fetch(obsURL, {
+      headers:{'User-Agent':'EagleEyesSLV/3.0','Accept':'application/geo+json'}
+    });
+    if (!r2.ok) throw new Error('NWS obs failed');
+    const d2 = await r2.json();
+    const p  = d2.properties;
+
+    const tempC = p.temperature?.value;
+    const tempF = tempC!=null ? (tempC*9/5+32).toFixed(0) : '—';
+    const windMs = p.windSpeed?.value;
+    const windKts = windMs!=null ? Math.round(windMs*1.944) : '—';
+    const windDir = p.windDirection?.value;
+    const humidity = p.relativeHumidity?.value;
+    const vis = p.visibility?.value;
+    const pres = p.barometricPressure?.value;
+
+    setEl('wx-cond', p.textDescription || '—');
+    setEl('wx-temp', tempF !== '—' ? `${tempF}°F / ${tempC?.toFixed(1)}°C` : '—');
+    setEl('wx-wind', windKts !== '—' ? `${windKts} kts @ ${windDir}°` : '—');
+    setEl('wx-hum',  humidity!=null ? `${humidity?.toFixed(0)}%` : '—');
+    setEl('wx-vis',  vis!=null ? `${(vis/1000).toFixed(1)} km` : '—');
+    setEl('wx-pres', pres!=null ? `${(pres/100).toFixed(1)} hPa` : '—');
+
+    // Wind alert
+    if (windKts !== '—' && windKts > 30) {
+      addAlert('warn', `💨 High winds at Alamosa: ${windKts} kts`);
+    }
+
+    // Forecast
+    if (nwsGridURL) {
+      const r3 = await fetch(nwsGridURL, {
+        headers:{'User-Agent':'EagleEyesSLV/3.0','Accept':'application/geo+json'}
+      });
+      if (r3.ok) {
+        const d3 = await r3.json();
+        const periods = d3.properties?.periods?.slice(0,4) || [];
+        document.getElementById('wx-forecast').innerHTML =
+          periods.map(pe =>
+            `<div style="margin-bottom:4px;"><span style="color:var(--accent2)">${pe.name}:</span> ${pe.shortForecast} ${pe.temperature}°${pe.temperatureUnit}</div>`
+          ).join('') || 'No forecast data.';
+      }
+    }
+
+    addTickerItem('info', `🌤 Alamosa: ${p.textDescription||'—'} ${tempF}°F`);
+
+  } catch(e) {
+    console.error('Weather error:', e);
+    document.getElementById('wx-forecast').textContent = 'Weather data unavailable.';
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  SPACE WEATHER — NOAA SWPC (no key)
+// ══════════════════════════════════════════════════
+async function fetchSpaceWeather() {
+  try {
+    const r = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
+    if (!r.ok) throw new Error('SWPC fail');
+    const d = await r.json();
+    // Last entry: [datetime, kp, observed, noaa_scale]
+    const last = d[d.length-1];
+    const kp   = parseFloat(last[1]);
+
+    let kpClass = 'ok', aurora = 'Unlikely', signal = 'Normal';
+    if (kp >= 7)      { kpClass='danger'; aurora='Possible SLV!';  signal='Disrupted'; }
+    else if (kp >= 5) { kpClass='warn';   aurora='Possible North'; signal='Degraded'; }
+    else if (kp >= 3) { kpClass='info';   aurora='High latitudes'; signal='Minor impact'; }
+
+    setVal('sw-kp',     `${kp}`, kpClass);
+    setEl ('sw-aurora', aurora);
+    setEl ('sw-signal', signal);
+
+    // Solar wind speed
+    const r2 = await fetch('https://services.swpc.noaa.gov/products/solar-wind/plasma-2-hour.json');
+    if (r2.ok) {
+      const d2 = await r2.json();
+      const last2 = d2[d2.length-1];
+      const windSpd = parseFloat(last2[2]); // km/s
+      setEl('sw-wind', `${windSpd.toFixed(0)} km/s`);
+      if (windSpd > 600) addAlert('warn', `☀ High solar wind: ${windSpd.toFixed(0)} km/s`);
+    }
+
+    if (kp >= 5) addAlert('warn', `☀ Elevated Kp=${kp} — possible signal interference`);
+
+  } catch(e) {
+    console.error('Space weather error:', e);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  EARTHQUAKES — USGS (no key)
+// ══════════════════════════════════════════════════
+async function fetchEarthquakes() {
+  try {
+    // Past 7 days, M1.5+, centered on SLV ~200mi radius
+    const url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+      '&minlatitude=35&maxlatitude=40&minlongitude=-109&maxlongitude=-103' +
+      '&minmagnitude=1.5&orderby=time&limit=50';
+
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('USGS fail');
+    const d = await r.json();
+    const quakes = d.features || [];
+
+    layers.quake.clearLayers();
+
+    quakes.forEach(q => {
+      const [lon,lat,depth] = q.geometry.coordinates;
+      const mag   = q.properties.mag;
+      const place = q.properties.place;
+      const time  = new Date(q.properties.time);
+      const size  = Math.max(6, mag * 5);
+
+      let color = '#cc3333';
+      if (mag < 2.5) color = '#888';
+      if (mag < 2)   color = '#666';
+
+      const icon = L.divIcon({
+        className:'',
+        html:`<div class="eq-icon" style="font-size:${Math.max(10,mag*5)}px;opacity:${mag>2.5?1:.6}">🔴</div>`,
+        iconSize:[size,size], iconAnchor:[size/2,size/2]
+      });
+
+      L.marker([lat,lon],{icon})
+        .bindTooltip(`M${mag} — ${place}`, {permanent:false})
+        .on('click', () => showInspector({
+          title:`🔴 M${mag} Earthquake`,
+          rows:[
+            ['Magnitude', `M${mag}`],
+            ['Location',  place],
+            ['Depth',     `${depth.toFixed(1)} km`],
+            ['Time',      time.toUTCString()],
+            ['Lat/Lon',   `${lat.toFixed(3)}, ${lon.toFixed(3)}`],
+          ]
+        }))
+        .addTo(layers.quake);
+
+      if (mag >= 3) addAlert('warn', `🔴 M${mag} quake — ${place}`);
+    });
+
+    document.getElementById('cnt-quake').textContent = `${quakes.length} events`;
+
+    // Sidebar list — top 5 by magnitude
+    const top5 = [...quakes].sort((a,b) => b.properties.mag-a.properties.mag).slice(0,5);
+    document.getElementById('quake-list').innerHTML = top5.map(q => {
+      const m   = q.properties.mag;
+      const cls = m >= 4 ? 'danger' : m >= 3 ? 'warn' : 'info';
+      return `<div class="alert-badge ${cls}">
+        🔴 <strong>M${m}</strong> — ${q.properties.place}
+      </div>`;
+    }).join('') || '<div class="info-box">No significant quakes.</div>';
+
+  } catch(e) {
+    console.error('USGS error:', e);
+    document.getElementById('quake-list').textContent = 'Seismic data unavailable.';
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  FIRES — NASA FIRMS (EONET, no key)
+// ══════════════════════════════════════════════════
+async function fetchFires() {
+  try {
+    // EONET natural events API — fires, free, no key
+    const url = 'https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=50&bbox=-109,36,-103,40';
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('EONET fail');
+    const d = await r.json();
+    const events = d.events || [];
+
+    layers.fire.clearLayers();
+    let fireCount = 0;
+
+    events.forEach(ev => {
+      const geom = ev.geometry?.[0];
+      if (!geom) return;
+      const [lon,lat] = geom.coordinates;
+      fireCount++;
+
+      const icon = L.divIcon({
+        className:'',
+        html:'<div class="fire-icon">🔥</div>',
+        iconSize:[18,18], iconAnchor:[9,9]
+      });
+
+      L.marker([lat,lon],{icon})
+        .bindTooltip(ev.title, {permanent:false})
+        .on('click', () => showInspector({
+          title:`🔥 ${ev.title}`,
+          rows:[
+            ['Event ID',  ev.id],
+            ['Category',  'Wildfire'],
+            ['Updated',   ev.geometry?.[0]?.date || '—'],
+            ['Lat/Lon',   `${lat.toFixed(3)}, ${lon.toFixed(3)}`],
+            ['Source',    ev.sources?.[0]?.id || '—'],
+          ]
+        }))
+        .addTo(layers.fire);
+
+      addAlert('danger', `🔥 Active fire: ${ev.title}`);
+    });
+
+    document.getElementById('cnt-fire').textContent = `${fireCount} active`;
+
+    document.getElementById('fire-list').innerHTML = events.length
+      ? events.slice(0,5).map(ev =>
+          `<div class="alert-badge danger">🔥 ${ev.title}</div>`
+        ).join('')
+      : '<div class="info-box" style="color:var(--accent2)">✓ No active fires in region.</div>';
+
+  } catch(e) {
+    console.error('Fire error:', e);
+    document.getElementById('fire-list').textContent = 'Fire data unavailable.';
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  GOES-WEST IMAGERY LAYER (NOAA, no key)
+// ══════════════════════════════════════════════════
+function initGOES() {
+  // NOAA GOES-West GeoColor tiles (publicly served)
+  layers.goes = L.tileLayer(
+    'https://cdn.star.nesdis.noaa.gov/GOES18/ABI/CONUS/GEOCOLOR/{z}/{x}/{y}.jpg',
+    { attribution:'NOAA GOES-West GeoColor', opacity:0.55, maxZoom:5, minZoom:3 }
+  );
+}
+
+// ══════════════════════════════════════════════════
+//  GOOGLE TRAFFIC (needs Maps JS API key)
+// ══════════════════════════════════════════════════
+function loadGoogleTraffic() {
+  if (!K.goo) {
+    alert('Enter a Google Maps API key in the KEYS tab.');
+    document.getElementById('tog-traffic').checked = false;
+    return;
+  }
+  if (googleReady) { activateTrafficLayer(); return; }
+
+  const s1 = document.createElement('script');
+  s1.src = `https://maps.googleapis.com/maps/api/js?key=${K.goo}&v=weekly`;
+  s1.async = true;
+  s1.onload = () => {
+    googleReady = true;
+    const s2 = document.createElement('script');
+    s2.src = 'https://unpkg.com/leaflet.gridlayer.googlemutant@latest/dist/Leaflet.GoogleMutant.js';
+    s2.onload = activateTrafficLayer;
+    s2.onerror = () => alert('Google Mutant plugin failed to load.');
+    document.head.appendChild(s2);
+  };
+  s1.onerror = () => {
+    alert('Google Maps API failed. Check your API key.');
+    document.getElementById('tog-traffic').checked = false;
+  };
+  document.head.appendChild(s1);
+}
+
+function activateTrafficLayer() {
+  try {
+    if (layers.traffic) layers.traffic.remove();
+    layers.traffic = L.gridLayer.googleMutant({ type:'roadmap' });
+    layers.traffic.addGoogleLayer('TrafficLayer');
+    if (document.getElementById('tog-traffic').checked) layers.traffic.addTo(map);
+    document.getElementById('cnt-traffic').textContent = 'live';
+  } catch(e) {
+    console.error('Traffic layer error:', e);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  LAYER TOGGLE
+// ══════════════════════════════════════════════════
+function toggleLayer(name) {
+  const on = document.getElementById('tog-'+name)?.checked;
+  if (name === 'traffic') { on ? loadGoogleTraffic() : (layers.traffic?.remove()); return; }
+  if (name === 'goes')    { on ? layers.goes?.addTo(map) : layers.goes?.remove(); return; }
+  if (layers[name]) { on ? layers[name].addTo(map) : layers[name].remove(); }
+}
+
+// ══════════════════════════════════════════════════
+//  ALERTS + TICKER
+// ══════════════════════════════════════════════════
+function addAlert(level, msg) {
+  if (alerts.find(a=>a.msg===msg)) return; // dedupe
+  alerts.push({ level, msg, time: new Date() });
+  renderAlerts();
+  addTickerItem(level, msg);
+}
+
+function renderAlerts() {
+  const el = document.getElementById('alerts-panel');
+  if (!alerts.length) {
+    el.innerHTML = '<div class="alert-badge ok">✓ No active alerts</div>';
+    return;
+  }
+  el.innerHTML = [...alerts].reverse().slice(0,12).map(a =>
+    `<div class="alert-badge ${a.level}">
+      ${a.msg}
+      <span style="margin-left:auto;font-size:9px;color:var(--muted)">${a.time.toUTCString().slice(-13,-4)}</span>
+    </div>`
+  ).join('');
+}
+
+function addTickerItem(cls, text) {
+  const ticker = document.getElementById('ticker-inner');
+  const div = document.createElement('div');
+  div.className = `tick-item ${cls}`;
+  div.textContent = text;
+  ticker.appendChild(div);
+}
+
+// ══════════════════════════════════════════════════
+//  AI THEATER SUMMARY (multi-domain)
+// ══════════════════════════════════════════════════
+async function generateAISummary() {
+  if (!K.oai) { alert('Enter your OpenAI API key in the KEYS tab.'); return; }
+
+  openModal('GENERATING FULL SA BRIEF…', 'Querying AI analyst across all data streams…');
+
+  const wxCond  = document.getElementById('wx-cond')?.textContent  || '—';
+  const wxTemp  = document.getElementById('wx-temp')?.textContent  || '—';
+  const wxWind  = document.getElementById('wx-wind')?.textContent  || '—';
+  const kp      = document.getElementById('sw-kp')?.textContent    || '—';
+  const acCount = acMarkers.size;
+  const milCount = [...acMarkers.values()].filter(a => a.callsign?.includes('[MIL]')).length;
+  const satList = satObjects.map(s=>`${s.name} at ${s.alt?.toFixed(0)||'?'}km`).join(', ');
+  const alertList = alerts.slice(-8).map(a=>a.msg).join('; ') || 'none';
+
+  const c = map.getCenter();
+
+  const prompt = `You are a military/intelligence theater analyst. Generate a comprehensive situational awareness brief for the San Luis Valley, Colorado (37.5°N, 105.9°W) as of ${new Date().toUTCString()}.
+
+LIVE SENSOR DATA:
+Air Domain: ${acCount} aircraft in monitoring zone
+Space: Satellites tracked overhead: ${satList}
+Space Weather: Kp Index = ${kp}
+Weather (Alamosa CO): ${wxCond}, ${wxTemp}, Wind: ${wxWind}
+Active Alerts: ${alertList}
+Map Center: ${c.lat.toFixed(3)}°N ${c.lng.toFixed(3)}°W
+
+Write a 6-8 sentence professional intelligence brief covering:
+1. Air domain status
+2. Orbital/space environment assessment
+3. Atmospheric conditions affecting operations
+4. Ground/environmental threats (fires, seismic)
+5. One prioritized actionable recommendation
+
+Use precise, military-style language. Be factual and grounded.`;
+
+  try {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method:'POST',
+      headers:{'Authorization':`Bearer ${K.oai}`,'Content-Type':'application/json'},
+      body:JSON.stringify({ model:'gpt-4o-mini', max_tokens:500, messages:[{role:'user',content:prompt}] })
+    });
+    if (!r.ok) { const e=await r.json(); openModal('AI ERROR',e.error?.message||r.status); return; }
+    const d = await r.json();
+    openModal(`SA BRIEF — ${new Date().toUTCString()}`, d.choices[0].message.content);
+  } catch(e) {
+    openModal('AI ERROR', 'Failed to reach OpenAI. Check key and network.');
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  INSPECTOR
+// ══════════════════════════════════════════════════
+function showInspector({ title, rows }) {
+  document.getElementById('insp-title').textContent = title;
+  document.getElementById('inspector-body').innerHTML = rows.map(([k,v]) =>
+    `<div class="data-row" style="border-bottom:1px solid rgba(30,58,30,.3);padding:3px 0">
+      <span class="data-key">${k}</span>
+      <span class="data-val">${v}</span>
+    </div>`
+  ).join('');
+  document.getElementById('inspector').style.display = 'flex';
+}
+
+function hideInspector() {
+  document.getElementById('inspector').style.display = 'none';
+}
+
+// ══════════════════════════════════════════════════
+//  MODAL
+// ══════════════════════════════════════════════════
+function openModal(title, body) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent  = body;
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+// ══════════════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════════════
+function switchTab(n) {
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===n));
+  document.querySelectorAll('.tab-content').forEach((c,i)=>c.classList.toggle('active',i===n));
+}
+
+// ══════════════════════════════════════════════════
+//  KEYS
+// ══════════════════════════════════════════════════
+function loadKeyFields() {
+  document.getElementById('k-goo').value = K.goo;
+  document.getElementById('k-oai').value = K.oai;
+}
+
+function saveKeys() {
+  K.goo = document.getElementById('k-goo').value.trim();
+  K.oai = document.getElementById('k-oai').value.trim();
+  localStorage.setItem('slv_goo', K.goo);
+  localStorage.setItem('slv_oai', K.oai);
+  alert('Keys saved.');
+}
+
+// ══════════════════════════════════════════════════
+//  SIDEBAR DRAG + RESIZE
+// ══════════════════════════════════════════════════
+function initSidebar() {
+  const sb  = document.getElementById('sidebar');
+  const hdr = document.getElementById('sidebar-hdr');
+  let drag = false, ox = 0, oy = 0;
+
+  hdr.addEventListener('mousedown', e => {
+    drag = true;
+    ox = e.clientX - sb.offsetLeft;
+    oy = e.clientY - sb.offsetTop;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!drag) return;
+    sb.style.left = Math.max(0, e.clientX-ox)+'px';
+    sb.style.top  = Math.max(48, e.clientY-oy)+'px';
+  });
+  document.addEventListener('mouseup', () => { drag = false; });
+
+  let res = null;
+  const startRes = (dir,e) => { res={dir,sx:e.clientX,sy:e.clientY,w:sb.offsetWidth,h:sb.offsetHeight}; e.preventDefault(); };
+  document.getElementById('rh-e').addEventListener('mousedown',  e=>startRes('e',e));
+  document.getElementById('rh-s').addEventListener('mousedown',  e=>startRes('s',e));
+  document.getElementById('rh-se').addEventListener('mousedown', e=>startRes('se',e));
+  document.addEventListener('mousemove', e => {
+    if (!res) return;
+    if (res.dir==='e'||res.dir==='se') sb.style.width  = Math.max(240, res.w+(e.clientX-res.sx))+'px';
+    if (res.dir==='s'||res.dir==='se') sb.style.height = Math.max(220, res.h+(e.clientY-res.sy))+'px';
+  });
+  document.addEventListener('mouseup', ()=>{ res=null; });
+}
+
+// ══════════════════════════════════════════════════
+//  USGS WATER GAUGES (no key — 50 req/hr free)
+// ══════════════════════════════════════════════════
+async function fetchWaterData() {
+  // Use bounding box to find all active gauges
+  const url = `https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${BBOX.minLon},${BBOX.minLat},${BBOX.maxLon},${BBOX.maxLat}&parameterCd=00060&siteStatus=active`;
+
+  try {
+    const r = await fetch(url);
+    if (!r.ok) { console.error('Water API status:', r.status); return; }
+    const d = await r.json();
+
+    layers.water.clearLayers();
+    let count = 0;
+    const listHtml = [];
+
+    (d.value?.timeSeries || []).forEach(ts => {
+      const info = ts.sourceInfo;
+      const name = info.siteName;
+      const code = info.siteCode[0].value;
+      const lat  = info.geoLocation.geogLocation.latitude;
+      const lon  = info.geoLocation.geogLocation.longitude;
+      const vals = ts.values[0]?.value;
+      const latest = vals && vals.length > 0 ? vals[vals.length-1] : null;
+      const flow = latest ? parseFloat(latest.value) : null;
+      const time = latest ? latest.dateTime : '';
+
+      // Skip bad/missing readings but show zero flow
+      if (flow === null || flow <= -9999) return;
+      count++;
+
+      const flowColor = flow > 500 ? '#22aacc' : flow > 100 ? '#44cc66' : flow > 10 ? '#aacc44' : '#cc8844';
+
+      const icon = L.divIcon({
+        className:'',
+        html:`<div style="font-size:14px;text-shadow:0 0 6px ${flowColor};">💧</div>`,
+        iconSize:[18,18], iconAnchor:[9,9]
+      });
+
+      const m = L.marker([lat,lon],{icon})
+        .bindTooltip(`${name}\n${flow} cfs`, {permanent:false, direction:'top'})
+        .on('click', () => showInspector({
+          title:`💧 ${name}`,
+          rows:[
+            ['Site ID',    code],
+            ['Flow',       `${flow} cfs`],
+            ['Reading',    time ? new Date(time).toLocaleString() : '—'],
+            ['Lat/Lon',    `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`],
+          ]
+        }));
+
+      layers.water.addLayer(m);
+
+      listHtml.push(`<div class="data-card">
+        <div class="card-title">💧 ${name}</div>
+        <div class="card-detail">${flow} cfs — ${time ? new Date(time).toLocaleTimeString() : '—'}</div>
+      </div>`);
+    });
+
+    document.getElementById('cnt-water').textContent = `${count} gauges`;
+    document.getElementById('water-list').innerHTML = listHtml.length > 0 ?
+      listHtml.join('') : '<div class="info-box">No active gauge readings</div>';
+
+  } catch(e) { console.error('Water fetch error:', e); }
+}
+
+// ══════════════════════════════════════════════════
+//  USGS MINERAL DEPOSITS — MRDS WFS (no key)
+// ══════════════════════════════════════════════════
+async function fetchMinerals() {
+  const wfsUrl = 'https://mrdata.usgs.gov/cgi-bin/mapserv?map=/mnt/mrt/map-files/mrds.map' +
+    '&service=WFS&version=1.0.0&request=GetFeature&typeName=mrds-high' +
+    `&bbox=${BBOX.minLon},${BBOX.minLat},${BBOX.maxLon},${BBOX.maxLat}` +
+    '&maxFeatures=300&outputFormat=GML2';
+
+  try {
+    const r = await fetch(wfsUrl);
+    if (!r.ok) { console.error('MRDS status:', r.status); return; }
+    const txt = await r.text();
+
+    layers.mineral.clearLayers();
+
+    // Commodity code -> name map
+    const COMMOD = {
+      'AU':'Gold','AG':'Silver','CU':'Copper','PB':'Lead','ZN':'Zinc',
+      'FE':'Iron','MN':'Manganese','W':'Tungsten','MO':'Molybdenum',
+      'U':'Uranium','V':'Vanadium','SDG':'Sand/Gravel','STO':'Stone',
+      'CL':'Coal','BA':'Barite','FL':'Fluorite','GM':'Gemstone',
+      'MIC':'Mica','PER':'Perlite','PUM':'Pumice','VER':'Vermiculite',
+    };
+
+    // Parse with regex for maximum browser compatibility (GML namespaces are tricky)
+    let count = 0;
+    const featureRegex = /<gml:featureMember>([\s\S]*?)<\/gml:featureMember>/g;
+    let match;
+
+    while ((match = featureRegex.exec(txt)) !== null) {
+      const block = match[1];
+
+      const coordMatch = block.match(/<gml:coordinates>([-\d.]+),([-\d.]+)<\/gml:coordinates>/);
+      if (!coordMatch) continue;
+      const lon = parseFloat(coordMatch[1]);
+      const lat = parseFloat(coordMatch[2]);
+      if (isNaN(lat) || isNaN(lon)) continue;
+
+      const nameMatch = block.match(/<ms:site_name>(.*?)<\/ms:site_name>/);
+      const name = nameMatch ? nameMatch[1] : 'Unknown';
+
+      const devMatch = block.match(/<ms:dev_stat>(.*?)<\/ms:dev_stat>/);
+      const devStat = devMatch ? devMatch[1] : '';
+
+      const urlMatch = block.match(/<ms:url>(.*?)<\/ms:url>/);
+      const url = urlMatch ? urlMatch[1] : '';
+
+      const codeMatch = block.match(/<ms:code_list>(.*?)<\/ms:code_list>/);
+      const codes = codeMatch ? codeMatch[1].trim() : '';
+
+      count++;
+      const commodNames = codes.split(/\s+/).filter(Boolean).map(c => COMMOD[c] || c).join(', ');
+      const iconChar = codes.includes('AU') ? '🪙' :
+                       codes.includes('AG') ? '⚪' :
+                       codes.includes('CU') ? '🟤' :
+                       codes.includes('U')  ? '☢' : '💎';
+
+      const icon = L.divIcon({
+        className:'',
+        html:`<div style="font-size:11px;opacity:.8">${iconChar}</div>`,
+        iconSize:[14,14], iconAnchor:[7,7]
+      });
+
+      const m = L.marker([lat,lon],{icon})
+        .bindTooltip(`${name}\n${commodNames}`, {permanent:false, direction:'top'})
+        .on('click', () => {
+          showInspector({
+            title:`💎 ${name}`,
+            rows:[
+              ['Status',      devStat],
+              ['Commodities',  commodNames || '—'],
+              ['Codes',       codes],
+              ['Lat/Lon',     `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`],
+              ['USGS Link',   url],
+            ]
+          });
+          if (url) window.open(url, '_blank');
+        });
+
+      layers.mineral.addLayer(m);
+    }
+
+    document.getElementById('cnt-mineral').textContent = `${count} deposits`;
+    if (count === 0) console.warn('MRDS: 0 features parsed from', txt.substring(0,200));
+
+  } catch(e) { console.error('Mineral fetch error:', e); }
+}
+
+// ══════════════════════════════════════════════════
+//  UFO SIGHTINGS — NUFORC/CORGIS (embedded static data)
+// ══════════════════════════════════════════════════
+const UFO_DATA = UFOJSON; // populated below
+
+function loadUFOSightings() {
+  layers.ufo.clearLayers();
+  let count = 0;
+
+  UFO_DATA.forEach(u => {
+    count++;
+    const icon = L.divIcon({
+      className:'',
+      html:`<div style="font-size:13px;filter:drop-shadow(0 0 4px rgba(128,255,128,.6));opacity:.75">👽</div>`,
+      iconSize:[16,16], iconAnchor:[8,8]
+    });
+
+    const m = L.marker([u.la, u.lo], {icon})
+      .bindTooltip(`UFO: ${u.c} (${u.y})\n${u.s}`, {permanent:false, direction:'top'})
+      .on('click', () => showInspector({
+        title:`👽 UFO — ${u.c}`,
+        rows:[
+          ['Date',    `${u.y}/${String(u.m).padStart(2,'0')}`],
+          ['City',    u.c],
+          ['Shape',   u.s || '—'],
+          ['Report',  u.d],
+          ['Lat/Lon', `${u.la}°, ${u.lo}°`],
+          ['Source',  'NUFORC via CORGIS'],
+        ]
+      }));
+
+    layers.ufo.addLayer(m);
+  });
+
+  document.getElementById('cnt-ufo').textContent = `${count} sightings`;
+}
+
+// ══════════════════════════════════════════════════
+//  CDOT WEBCAMS (no key)
+// ══════════════════════════════════════════════════
+const CDOT_CAMS = [
+  { id:'antonito',   name:'Antonito — Hwys 285 & 17 (E)',  lat:37.0742, lon:-105.6579, url:'https://cocam.carsprogram.org/Cellular/017W03900CAM1RHS-E.jpg' },
+  { id:'laveta',     name:'La Veta Pass — US 160 (W)',      lat:37.5029, lon:-105.2179, url:'https://cocam.carsprogram.org/Cellular/160W27840CAM1RHS-W.jpg' },
+  { id:'wolfcreek-e',name:'Wolf Creek Pass — US 160 (E)',   lat:37.4866, lon:-106.7952, url:'https://cocam.carsprogram.org/Cellular/160E16820CAM1RHS-W.jpg' },
+  { id:'wolfcreek-w',name:'Wolf Creek Pass — US 160 (W)',   lat:37.4866, lon:-106.7952, url:'https://cocam.carsprogram.org/Cellular/160E16820CAM1RHS-E.jpg' },
+  { id:'center',     name:'Center — CO-112 (E)',            lat:37.7536, lon:-106.1091, url:'https://cocam.carsprogram.org/Cellular/112W01315CAM1NEC-E.jpg' },
+  { id:'poncha',     name:'Poncha Pass — US 285 (S)',       lat:38.4184, lon:-106.0657, url:'https://cocam.carsprogram.org/Cellular/285S11910CAM1RHS-S.jpg' },
+  { id:'villagrove-n',name:'Villa Grove — US 285 (N)',      lat:38.2541, lon:-105.9677, url:'https://cocam.carsprogram.org/Cellular/285N10025CAM1RHS-N.jpg' },
+  { id:'villagrove-s',name:'Villa Grove — US 285 (S)',      lat:38.2541, lon:-105.9677, url:'https://cocam.carsprogram.org/Cellular/285N10025CAM1RHS-S.jpg' },
+  { id:'southfork',  name:'South Fork — US 160 (W)',        lat:37.6716, lon:-106.6397, url:'https://cocam.carsprogram.org/Snapshots/160W18610CAM1RHS.flv.png' },
+  { id:'border159',  name:'CO/NM Border — Hwy 159 (N)',     lat:36.9945, lon:-105.7233, url:'https://cocam.carsprogram.org/Live_View/CO159000North.jpg' },
+];
+
+function initCamMarkers() {
+  CDOT_CAMS.forEach(cam => {
+    const icon = L.divIcon({
+      className:'',
+      html:'<div style="font-size:16px;filter:drop-shadow(0 0 4px rgba(204,170,34,.7))">📷</div>',
+      iconSize:[20,20], iconAnchor:[10,10]
+    });
+    L.marker([cam.lat, cam.lon], {icon})
+      .bindTooltip(cam.name, {permanent:false, direction:'top'})
+      .on('click', () => {
+        // Show camera image in modal
+        const ts = Date.now();
+        openModal(cam.name,
+          `Loading camera image...\n\nDirect URL:\n${cam.url}?${ts}`
+        );
+        // Also open the image
+        const img = new Image();
+        img.onload = () => {
+          document.getElementById('modal-body').innerHTML =
+            `<img src="${cam.url}?${ts}" style="max-width:100%;border-radius:4px;border:1px solid var(--border2);" alt="${cam.name}">` +
+            `<div style="margin-top:8px;font-size:9px;color:var(--muted)">Updated: ${new Date().toUTCString()}</div>`;
+        };
+        img.onerror = () => {
+          document.getElementById('modal-body').textContent =
+            `Camera image unavailable.\nURL: ${cam.url}\n\nTry the external link in the CAMS tab.`;
+        };
+        img.src = cam.url + '?' + ts;
+      })
+      .addTo(map);
+  });
+}
+
+function renderCamGrid() {
+  const grid = document.getElementById('cam-grid');
+  const ts = Date.now();
+  grid.innerHTML = CDOT_CAMS.map(cam =>
+    `<div class="data-card" style="padding:4px;">
+      <div class="card-title" style="margin-bottom:3px;">${cam.name}</div>
+      <img src="${cam.url}?${ts}" alt="${cam.name}"
+        style="width:100%;border-radius:3px;cursor:pointer;border:1px solid var(--border);"
+        onclick="window.open('${cam.url}?${Date.now()}','_blank')"
+        onerror="this.alt='Image unavailable';this.style.height='40px';this.style.opacity='.3';">
+    </div>`
+  ).join('');
+}
+
+function refreshCams() {
+  renderCamGrid();
+  addTickerItem('info', '📷 Camera images refreshed');
+}
+
+// ══════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════
+function setEl(id, val)           { const e=document.getElementById(id); if(e) e.textContent=val; }
+function setVal(id, val, cls='') {
+  const e = document.getElementById(id);
+  if (!e) return;
+  e.textContent = val;
+  e.className = 'data-val' + (cls ? ' '+cls : '');
+}
+
+function startClock() {
+  setInterval(() => {
+    const n = new Date();
+    document.getElementById('utc-clock').textContent =
+      [n.getUTCHours(),n.getUTCMinutes(),n.getUTCSeconds()]
+        .map(x=>String(x).padStart(2,'0')).join(':') + ' UTC';
+  }, 1000);
+}
+
+function openInGoogleMaps() {
+  const c = map.getCenter();
+  window.open(`https://www.google.com/maps/@${c.lat},${c.lng},${map.getZoom()}z`,'_blank');
+}
+
+function resetDashboard() {
+  if (confirm('Reset and reload dashboard?')) location.reload();
+}
+
+function setLoadMsg(msg) {
+  document.getElementById('load-msg').textContent = msg;
+}
+
+// ══════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════
+window.addEventListener('load', async () => {
+  initMap();
+  initSidebar();
+  initGOES();
+  initCamMarkers();
+  loadKeyFields();
+  startClock();
+
+  // Dismiss loading screen after short delay
+  setTimeout(() => {
+    document.getElementById('loading').style.display = 'none';
+  }, 1000);
+
+  setLoadMsg('Loading TLEs (visual catalog)…');
+  await loadTLEs();
+
+  setLoadMsg('Fetching aircraft (Airplanes.live)…');
+  await fetchAircraft();
+
+  setLoadMsg('Getting weather…');
+  await fetchWeather();
+
+  setLoadMsg('Checking space weather…');
+  await fetchSpaceWeather();
+
+  setLoadMsg('Loading seismic data…');
+  await fetchEarthquakes();
+
+  setLoadMsg('Loading fire data…');
+  await fetchFires();
+
+  setLoadMsg('Loading water gauges…');
+  await fetchWaterData();
+
+  setLoadMsg('Loading mineral deposits…');
+  await fetchMinerals();
+
+  setLoadMsg('Loading UFO sightings…');
+  loadUFOSightings();
+
+  setLoadMsg('Loading camera feeds…');
+  renderCamGrid();
+
+  renderAlerts();
+  document.getElementById('bottom-status').textContent = 'All streams active — v4.1';
+
+  // Polling
+  setInterval(fetchAircraft,    15000);
+  setInterval(propagateSats,    2000);
+  setInterval(computePasses,    60000);
+  setInterval(loadTLEs,         3600000);
+  setInterval(fetchWeather,     600000);
+  setInterval(fetchSpaceWeather,300000);
+  setInterval(fetchEarthquakes, 300000);
+  setInterval(fetchFires,       900000);
+  setInterval(fetchWaterData,   600000);
+  setInterval(renderCamGrid,    120000);
+});
+</script>
+</body>
+</html>
