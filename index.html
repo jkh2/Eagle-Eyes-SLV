@@ -125,7 +125,12 @@ body {
   display:flex;
   flex-direction:column;
   box-shadow:0 6px 32px rgba(0,0,0,.7);
+  transition: height 0.2s ease;
 }
+#sidebar.collapsed { height:38px!important; min-height:38px!important; }
+#sidebar.collapsed .tab-content,
+#sidebar.collapsed #sidebar-tabs,
+#sidebar.collapsed .rh { display:none!important; }
 
 #sidebar-hdr {
   height:38px;
@@ -143,6 +148,60 @@ body {
   flex-shrink:0;
 }
 #sidebar-hdr::before { content:'⠿'; color:var(--accent2); font-size:13px; }
+
+#sidebar-collapse {
+  margin-left:auto;
+  background:none;
+  border:1px solid var(--border2);
+  color:var(--accent2);
+  cursor:pointer;
+  font-size:14px;
+  width:26px; height:26px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:4px;
+  padding:0;
+  line-height:1;
+}
+#sidebar-collapse:hover { background:rgba(58,122,42,.2); }
+
+/* Mobile layout */
+@media (max-width: 768px) {
+  #sidebar {
+    top:auto!important;
+    bottom:36px!important;
+    left:0!important;
+    right:0!important;
+    width:100%!important;
+    height:45vh!important;
+    min-width:100%!important;
+    border-radius:12px 12px 0 0;
+    border-left:none;
+    border-right:none;
+    border-bottom:none;
+  }
+  #sidebar.collapsed {
+    height:38px!important;
+  }
+  #sidebar-hdr {
+    cursor:pointer;
+    justify-content:center;
+    border-radius:12px 12px 0 0;
+  }
+  #sidebar-hdr::before { content:''; }
+  #sidebar-hdr::after { content:''; display:block; width:40px; height:4px; background:var(--border2); border-radius:2px; position:absolute; top:6px; left:50%; transform:translateX(-50%); }
+  .rh { display:none!important; }
+  .tab-btn { font-size:9px; min-width:40px; padding:6px 2px; }
+  #header-title { font-size:12px; }
+  #alert-ticker { font-size:10px; }
+  #inspector {
+    top:auto!important; bottom:36px!important;
+    left:8px!important; right:8px!important;
+    width:auto!important;
+    max-height:50vh;
+  }
+}
 
 #sidebar-tabs {
   display:flex;
@@ -539,6 +598,7 @@ body {
   <div id="alert-ticker"><div id="ticker-inner">Initializing data streams...</div></div>
   <div class="vsep"></div>
   <div id="utc-clock">--:--:-- UTC</div>
+  <button id="sound-toggle" onclick="soundEnabled=!soundEnabled; this.textContent=soundEnabled?'🔊':'🔇'; playSound('tabClick');" title="Toggle sounds" style="background:none;border:1px solid var(--border2);color:var(--muted);cursor:pointer;font-size:14px;width:30px;height:30px;border-radius:4px;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;">🔊</button>
 </div>
 
 <!-- Map -->
@@ -546,7 +606,10 @@ body {
 
 <!-- Sidebar -->
 <div id="sidebar">
-  <div id="sidebar-hdr">SITUATIONAL AWARENESS — DRAG TO MOVE</div>
+  <div id="sidebar-hdr">
+    <span>SITUATIONAL AWARENESS</span>
+    <button id="sidebar-collapse" onclick="toggleSidebar()" title="Collapse/Expand">▼</button>
+  </div>
   <div id="sidebar-tabs">
     <button class="tab-btn active" onclick="switchTab(0)">AIR</button>
     <button class="tab-btn" onclick="switchTab(1)">SPACE</button>
@@ -835,6 +898,119 @@ let nwsGridURL   = null;
 
 // ── ALERTS STORE ───────────────────────────────────
 const alerts = [];
+
+// ══════════════════════════════════════════════════
+//  TACTICAL SOUND ENGINE (Web Audio API — no files)
+// ══════════════════════════════════════════════════
+let audioCtx = null;
+let soundEnabled = true;
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+const SFX = {
+  // Soft click for tab switches
+  tabClick() {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.04);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.06);
+  },
+
+  // Toggle on — rising chirp
+  toggleOn() {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1400, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.07, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+  },
+
+  // Toggle off — falling chirp
+  toggleOff() {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.07, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+  },
+
+  // Inspector open — two-tone tactical ping
+  inspect() {
+    const ctx = getAudioCtx();
+    [0, 0.06].forEach((delay, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = i === 0 ? 1000 : 1500;
+      gain.gain.setValueAtTime(0.06, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.06);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.06);
+    });
+  },
+
+  // Alert — warning tone (two quick pulses)
+  alert() {
+    const ctx = getAudioCtx();
+    [0, 0.12].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(880, ctx.currentTime + delay);
+      osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + delay + 0.08);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.1);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.1);
+    });
+  },
+
+  // Critical alert — urgent triple beep
+  alertCritical() {
+    const ctx = getAudioCtx();
+    [0, 0.1, 0.2].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'square';
+      osc.frequency.value = 1100;
+      gain.gain.setValueAtTime(0.06, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.07);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.07);
+    });
+  }
+};
+
+function playSound(name) {
+  if (!soundEnabled) return;
+  try { SFX[name]?.(); } catch(e) { /* audio not available */ }
+}
 
 // ══════════════════════════════════════════════════
 //  MAP INIT
@@ -1495,6 +1671,7 @@ function activateTrafficLayer() {
 // ══════════════════════════════════════════════════
 function toggleLayer(name) {
   const on = document.getElementById('tog-'+name)?.checked;
+  playSound(on ? 'toggleOn' : 'toggleOff');
   if (name === 'traffic') { on ? loadGoogleTraffic() : (layers.traffic?.remove()); return; }
   if (name === 'goes')    { on ? layers.goes?.addTo(map) : layers.goes?.remove(); return; }
   if (layers[name]) { on ? layers[name].addTo(map) : layers[name].remove(); }
@@ -1505,6 +1682,7 @@ function toggleLayer(name) {
 // ══════════════════════════════════════════════════
 function addAlert(level, msg) {
   if (alerts.find(a=>a.msg===msg)) return; // dedupe
+  playSound(level === 'danger' ? 'alertCritical' : 'alert');
   alerts.push({ level, msg, time: new Date() });
   renderAlerts();
   addTickerItem(level, msg);
@@ -1588,6 +1766,7 @@ Use precise, military-style language. Be factual and grounded.`;
 //  INSPECTOR
 // ══════════════════════════════════════════════════
 function showInspector({ title, rows }) {
+  playSound('inspect');
   document.getElementById('insp-title').textContent = title;
   document.getElementById('inspector-body').innerHTML = rows.map(([k,v]) =>
     `<div class="data-row" style="border-bottom:1px solid rgba(30,58,30,.3);padding:3px 0">
@@ -1616,6 +1795,7 @@ function closeModal() { document.getElementById('modal').classList.remove('open'
 //  TABS
 // ══════════════════════════════════════════════════
 function switchTab(n) {
+  playSound('tabClick');
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===n));
   document.querySelectorAll('.tab-content').forEach((c,i)=>c.classList.toggle('active',i===n));
 }
@@ -1637,37 +1817,82 @@ function saveKeys() {
 }
 
 // ══════════════════════════════════════════════════
-//  SIDEBAR DRAG + RESIZE
+//  SIDEBAR DRAG + RESIZE + MOBILE
 // ══════════════════════════════════════════════════
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const btn = document.getElementById('sidebar-collapse');
+  sb.classList.toggle('collapsed');
+  btn.textContent = sb.classList.contains('collapsed') ? '▲' : '▼';
+}
+
 function initSidebar() {
   const sb  = document.getElementById('sidebar');
   const hdr = document.getElementById('sidebar-hdr');
+  const isMobile = () => window.innerWidth <= 768;
+
+  // ── Drag (desktop only) ──
   let drag = false, ox = 0, oy = 0;
 
-  hdr.addEventListener('mousedown', e => {
+  const startDrag = (cx, cy) => {
+    if (isMobile()) return;
     drag = true;
-    ox = e.clientX - sb.offsetLeft;
-    oy = e.clientY - sb.offsetTop;
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => {
+    ox = cx - sb.offsetLeft;
+    oy = cy - sb.offsetTop;
+  };
+  const moveDrag = (cx, cy) => {
     if (!drag) return;
-    sb.style.left = Math.max(0, e.clientX-ox)+'px';
-    sb.style.top  = Math.max(48, e.clientY-oy)+'px';
-  });
-  document.addEventListener('mouseup', () => { drag = false; });
+    sb.style.left = Math.max(0, cx-ox)+'px';
+    sb.style.top  = Math.max(48, cy-oy)+'px';
+  };
+  const endDrag = () => { drag = false; };
 
+  hdr.addEventListener('mousedown', e => { startDrag(e.clientX, e.clientY); e.preventDefault(); });
+  hdr.addEventListener('touchstart', e => {
+    if (isMobile()) return; // on mobile, header taps toggle collapse
+    const t = e.touches[0]; startDrag(t.clientX, t.clientY); e.preventDefault();
+  }, {passive:false});
+
+  document.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
+  document.addEventListener('touchmove', e => {
+    if (drag) { const t = e.touches[0]; moveDrag(t.clientX, t.clientY); e.preventDefault(); }
+  }, {passive:false});
+
+  document.addEventListener('mouseup', endDrag);
+  document.addEventListener('touchend', endDrag);
+
+  // ── Resize (desktop only) ──
   let res = null;
-  const startRes = (dir,e) => { res={dir,sx:e.clientX,sy:e.clientY,w:sb.offsetWidth,h:sb.offsetHeight}; e.preventDefault(); };
-  document.getElementById('rh-e').addEventListener('mousedown',  e=>startRes('e',e));
-  document.getElementById('rh-s').addEventListener('mousedown',  e=>startRes('s',e));
-  document.getElementById('rh-se').addEventListener('mousedown', e=>startRes('se',e));
-  document.addEventListener('mousemove', e => {
+  const startRes = (dir, cx, cy) => {
+    if (isMobile()) return;
+    res = {dir, sx:cx, sy:cy, w:sb.offsetWidth, h:sb.offsetHeight};
+  };
+  const moveRes = (cx, cy) => {
     if (!res) return;
-    if (res.dir==='e'||res.dir==='se') sb.style.width  = Math.max(240, res.w+(e.clientX-res.sx))+'px';
-    if (res.dir==='s'||res.dir==='se') sb.style.height = Math.max(220, res.h+(e.clientY-res.sy))+'px';
+    if (res.dir==='e'||res.dir==='se') sb.style.width  = Math.max(240, res.w+(cx-res.sx))+'px';
+    if (res.dir==='s'||res.dir==='se') sb.style.height = Math.max(220, res.h+(cy-res.sy))+'px';
+  };
+  const endRes = () => { res = null; };
+
+  ['e','s','se'].forEach(dir => {
+    const el = document.getElementById('rh-'+dir);
+    el.addEventListener('mousedown',  e => { startRes(dir, e.clientX, e.clientY); e.preventDefault(); });
+    el.addEventListener('touchstart', e => { const t=e.touches[0]; startRes(dir, t.clientX, t.clientY); e.preventDefault(); }, {passive:false});
   });
-  document.addEventListener('mouseup', ()=>{ res=null; });
+
+  document.addEventListener('mousemove', e => moveRes(e.clientX, e.clientY));
+  document.addEventListener('touchmove', e => {
+    if (res) { const t=e.touches[0]; moveRes(t.clientX, t.clientY); e.preventDefault(); }
+  }, {passive:false});
+
+  document.addEventListener('mouseup', endRes);
+  document.addEventListener('touchend', endRes);
+
+  // ── Mobile: start collapsed ──
+  if (isMobile()) {
+    sb.classList.add('collapsed');
+    document.getElementById('sidebar-collapse').textContent = '▲';
+  }
 }
 
 // ══════════════════════════════════════════════════
