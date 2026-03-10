@@ -182,12 +182,13 @@ body {
     border-bottom:none;
   }
   #sidebar.collapsed {
-    height:38px!important;
+    height:42px!important;
   }
   #sidebar-hdr {
     cursor:pointer;
     justify-content:center;
     border-radius:12px 12px 0 0;
+    height:42px;
   }
   #sidebar-hdr::before { content:''; }
   #sidebar-hdr::after { content:''; display:block; width:40px; height:4px; background:var(--border2); border-radius:2px; position:absolute; top:6px; left:50%; transform:translateX(-50%); }
@@ -200,6 +201,16 @@ body {
     left:8px!important; right:8px!important;
     width:auto!important;
     max-height:50vh;
+  }
+  /* Move Leaflet attribution above the sidebar collapse bar */
+  .leaflet-control-attribution {
+    bottom:48px!important;
+    position:relative!important;
+    font-size:8px!important;
+    max-width:60vw;
+  }
+  .leaflet-bottom.leaflet-right {
+    bottom:48px!important;
   }
 }
 
@@ -1899,66 +1910,96 @@ function initSidebar() {
 //  USGS WATER GAUGES (no key — 50 req/hr free)
 // ══════════════════════════════════════════════════
 async function fetchWaterData() {
-  // Use bounding box to find all active gauges
-  const url = `https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${BBOX.minLon},${BBOX.minLat},${BBOX.maxLon},${BBOX.maxLat}&parameterCd=00060&siteStatus=active`;
+  const url = 'https://waterservices.usgs.gov/nwis/iv/?format=json' +
+    '&bBox=' + BBOX.minLon + ',' + BBOX.minLat + ',' + BBOX.maxLon + ',' + BBOX.maxLat +
+    '&parameterCd=00060&siteStatus=active';
+
+  console.log('[Water] Fetching:', url);
 
   try {
     const r = await fetch(url);
-    if (!r.ok) { console.error('Water API status:', r.status); return; }
-    const d = await r.json();
+    console.log('[Water] Response status:', r.status);
+    if (!r.ok) {
+      document.getElementById('cnt-water').textContent = 'API error';
+      document.getElementById('water-list').innerHTML = '<div class="info-box">USGS API returned status ' + r.status + '</div>';
+      return;
+    }
+    const txt = await r.text();
+    console.log('[Water] Response length:', txt.length);
+
+    let d;
+    try { d = JSON.parse(txt); } catch(pe) {
+      console.error('[Water] JSON parse error:', pe);
+      document.getElementById('cnt-water').textContent = 'parse error';
+      document.getElementById('water-list').innerHTML = '<div class="info-box">Could not parse USGS response</div>';
+      return;
+    }
+
+    const timeSeries = d.value?.timeSeries || [];
+    console.log('[Water] Time series count:', timeSeries.length);
 
     layers.water.clearLayers();
     let count = 0;
     const listHtml = [];
 
-    (d.value?.timeSeries || []).forEach(ts => {
-      const info = ts.sourceInfo;
-      const name = info.siteName;
-      const code = info.siteCode[0].value;
-      const lat  = info.geoLocation.geogLocation.latitude;
-      const lon  = info.geoLocation.geogLocation.longitude;
-      const vals = ts.values[0]?.value;
-      const latest = vals && vals.length > 0 ? vals[vals.length-1] : null;
-      const flow = latest ? parseFloat(latest.value) : null;
-      const time = latest ? latest.dateTime : '';
+    timeSeries.forEach(ts => {
+      try {
+        const info = ts.sourceInfo;
+        const name = info.siteName;
+        const code = info.siteCode[0].value;
+        const lat  = info.geoLocation.geogLocation.latitude;
+        const lon  = info.geoLocation.geogLocation.longitude;
+        const vals = ts.values[0]?.value;
+        const latest = vals && vals.length > 0 ? vals[vals.length-1] : null;
+        const flow = latest ? parseFloat(latest.value) : null;
+        const time = latest ? latest.dateTime : '';
 
-      // Skip bad/missing readings but show zero flow
-      if (flow === null || flow <= -9999) return;
-      count++;
+        console.log('[Water] Gauge:', name, '=', flow, 'cfs');
 
-      const flowColor = flow > 500 ? '#22aacc' : flow > 100 ? '#44cc66' : flow > 10 ? '#aacc44' : '#cc8844';
+        if (flow === null || flow <= -9999) return;
+        count++;
 
-      const icon = L.divIcon({
-        className:'',
-        html:`<div style="font-size:14px;text-shadow:0 0 6px ${flowColor};">💧</div>`,
-        iconSize:[18,18], iconAnchor:[9,9]
-      });
+        const flowColor = flow > 500 ? '#22aacc' : flow > 100 ? '#44cc66' : flow > 10 ? '#aacc44' : '#cc8844';
 
-      const m = L.marker([lat,lon],{icon})
-        .bindTooltip(`${name}\n${flow} cfs`, {permanent:false, direction:'top'})
-        .on('click', () => showInspector({
-          title:`💧 ${name}`,
-          rows:[
-            ['Site ID',    code],
-            ['Flow',       `${flow} cfs`],
-            ['Reading',    time ? new Date(time).toLocaleString() : '—'],
-            ['Lat/Lon',    `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`],
-          ]
-        }));
+        const icon = L.divIcon({
+          className:'',
+          html:'<div style="font-size:14px;text-shadow:0 0 6px ' + flowColor + ';">💧</div>',
+          iconSize:[18,18], iconAnchor:[9,9]
+        });
 
-      layers.water.addLayer(m);
+        const m = L.marker([lat,lon],{icon})
+          .bindTooltip(name + '\n' + flow + ' cfs', {permanent:false, direction:'top'})
+          .on('click', () => showInspector({
+            title:'💧 ' + name,
+            rows:[
+              ['Site ID',    code],
+              ['Flow',       flow + ' cfs'],
+              ['Reading',    time ? new Date(time).toLocaleString() : '—'],
+              ['Lat/Lon',    lat.toFixed(4) + '°, ' + lon.toFixed(4) + '°'],
+            ]
+          }));
 
-      listHtml.push(`<div class="data-card">
-        <div class="card-title">💧 ${name}</div>
-        <div class="card-detail">${flow} cfs — ${time ? new Date(time).toLocaleTimeString() : '—'}</div>
-      </div>`);
+        layers.water.addLayer(m);
+
+        listHtml.push('<div class="data-card">' +
+          '<div class="card-title">💧 ' + name + '</div>' +
+          '<div class="card-detail">' + flow + ' cfs — ' + (time ? new Date(time).toLocaleTimeString() : '—') + '</div>' +
+          '</div>');
+      } catch(innerErr) {
+        console.error('[Water] Error processing gauge:', innerErr);
+      }
     });
 
-    document.getElementById('cnt-water').textContent = `${count} gauges`;
+    console.log('[Water] Valid gauges:', count);
+    document.getElementById('cnt-water').textContent = count + ' gauges';
     document.getElementById('water-list').innerHTML = listHtml.length > 0 ?
-      listHtml.join('') : '<div class="info-box">No active gauge readings</div>';
+      listHtml.join('') : '<div class="info-box">No active gauge readings in SLV area</div>';
 
-  } catch(e) { console.error('Water fetch error:', e); }
+  } catch(e) {
+    console.error('[Water] Fetch error:', e);
+    document.getElementById('cnt-water').textContent = 'error';
+    document.getElementById('water-list').innerHTML = '<div class="info-box">Failed to reach USGS: ' + e.message + '</div>';
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -2035,10 +2076,9 @@ async function fetchMinerals() {
               ['Commodities',  commodNames || '—'],
               ['Codes',       codes],
               ['Lat/Lon',     `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`],
-              ['USGS Link',   url],
+              ['USGS Info',   url ? 'Available on USGS MRDS' : '—'],
             ]
           });
-          if (url) window.open(url, '_blank');
         });
 
       layers.mineral.addLayer(m);
