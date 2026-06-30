@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Eagle Eyes SLV v4.1 — Full Situational Awareness</title>
+<title>Eagle Eyes SLV v5.0 — Full Situational Awareness</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -599,7 +599,7 @@ body {
   <h1>🦅 EAGLE EYES SLV</h1>
   <p id="load-msg">Initializing full situational awareness...</p>
   <div class="loadbar"><div class="loadbar-fill"></div></div>
-  <p style="font-size:9px;color:var(--border2);margin-top:8px;">v4.1 — San Luis Valley GEINT</p>
+  <p style="font-size:9px;color:var(--border2);margin-top:8px;">v5.0 — San Luis Valley GEINT</p>
 </div>
 
 <!-- Header -->
@@ -759,9 +759,10 @@ body {
 
   <!-- OSINT TAB -->
   <div class="tab-content">
-    <div class="section-lbl">AI THEATER ANALYST</div>
+    <div class="section-lbl">AI ANALYST</div>
     <button class="btn primary" onclick="generateAISummary()">⚡ GENERATE FULL SA BRIEF</button>
-    <div class="info-box">Requires OpenAI key. Analyzes all live data streams: air, space, weather, seismic, fire — generates military-style situational brief.</div>
+    <button class="btn" onclick="openAIChat()" style="margin-top:4px;">💬 ASK AI ANALYST</button>
+    <div class="info-box">Uses OpenRouter (free) or OpenAI. Analyzes all live dashboard data and answers questions about current conditions.</div>
 
     <div class="section-lbl">ALERTS SUMMARY</div>
     <div id="alerts-panel"><div class="info-box">Aggregating alerts...</div></div>
@@ -770,6 +771,8 @@ body {
     <button class="btn" onclick="window.open('https://www.flightradar24.com/37.75,-105.9/10','_blank')">✈ FlightRadar24 — SLV</button>
     <button class="btn" onclick="window.open('https://www.windy.com/?37.75,-105.9,9','_blank')">🌪 Windy — SLV</button>
     <button class="btn" onclick="window.open('https://firms.modaps.eosdis.nasa.gov/map/','_blank')">🔥 NASA FIRMS Fire Map</button>
+    <button class="btn" onclick="window.open('https://fires.cornea.is/state/colorado','_blank')">🔥 CO Wildfire Explorer</button>
+    <button class="btn" onclick="window.open('https://www.cotrip.org/map','_blank')">📷 COtrip Live Map & Cameras</button>
     <button class="btn" onclick="window.open('https://earthquake.usgs.gov/earthquakes/map/?extent=35,-108&extent=40,-103','_blank')">🔴 USGS Earthquake Map</button>
     <button class="btn" onclick="window.open('https://www.swpc.noaa.gov/','_blank')">☀ NOAA Space Weather</button>
     <button class="btn" onclick="window.open('https://celestrak.org/cesium/orbit-viz.php','_blank')">🛰 Celestrak Orbit Viz</button>
@@ -778,16 +781,15 @@ body {
   <!-- CAMS TAB -->
   <div class="tab-content">
     <div class="section-lbl">CDOT TRAFFIC CAMERAS — SLV REGION</div>
-    <div class="info-box">Live CDOT camera snapshots. Images refresh from COtrip servers. Click any image to view full-size. No API key required.</div>
+    <div class="info-box">CDOT is upgrading their camera system statewide (2026). Live camera feeds are available through COtrip.org. Click below to view cameras near the SLV.</div>
 
     <div id="cam-grid" style="display:flex;flex-direction:column;gap:8px;">
     </div>
 
-    <button class="btn" onclick="refreshCams()" style="margin-top:6px;">⟳ REFRESH ALL CAMERAS</button>
+    <button class="btn primary" onclick="window.open('https://www.cotrip.org/map#/camera?lat=37.5&lng=-105.9&z=9','_blank')">📷 OPEN COTRIP LIVE CAMERAS</button>
 
     <div class="section-lbl" style="margin-top:8px;">EXTERNAL WEBCAMS</div>
-    <button class="btn" onclick="window.open('https://www.cotrip.org/camera/493/@-105.19913,37.61305,13?show=normalCameras','_blank')">📷 CDOT La Veta Pass</button>
-    <button class="btn" onclick="window.open('https://www.cotrip.org/camera/499/@-106.88548,37.5148,11?show=normalCameras','_blank')">📷 CDOT Wolf Creek Pass</button>
+    <button class="btn" onclick="window.open('https://www.cotrip.org/map#/camera?lat=37.5&lng=-105.9&z=9','_blank')">📷 COtrip SLV Region Cameras</button>
     <button class="btn" onclick="window.open('https://www.windy.com/-Webcams/United-States-of-America/Colorado/La-Veta/webcams/1648822318?37.593,-105.204,9','_blank')">📷 Windy — La Veta Pass Webcam</button>
     <button class="btn" onclick="window.open('https://wolfcreekski.com/webcams/','_blank')">📷 Wolf Creek Ski Area Cams</button>
     <button class="btn" onclick="window.open('https://www.coloradowebcam.net/webcamtypes/traffic-webcams','_blank')">📷 ColoradoWebCam.net</button>
@@ -797,21 +799,26 @@ body {
   <div class="tab-content">
     <div class="section-lbl">API KEYS (browser localStorage only)</div>
     <div class="key-grp">
+      <label>OPENROUTER KEY — FREE (for AI analyst)</label>
+      <input id="k-orr" type="text" placeholder="sk-or-...">
+      <div style="font-size:9px;color:var(--muted);margin-top:2px;">Free at openrouter.ai — no credit card needed. 20 req/min.</div>
+    </div>
+    <div class="key-grp">
       <label>GOOGLE MAPS JS API KEY (for traffic layer)</label>
       <input id="k-goo" type="text" placeholder="AIza...">
     </div>
     <div class="key-grp">
-      <label>OPENAI KEY (for AI theater brief)</label>
+      <label>OPENAI KEY (optional — paid fallback for AI)</label>
       <input id="k-oai" type="text" placeholder="sk-...">
     </div>
     <button class="btn primary" onclick="saveKeys()">💾 SAVE ALL KEYS</button>
-    <div class="info-box">Keys never leave your browser except to authenticate directly with each service API. Aircraft data via Airplanes.live requires no key.</div>
+    <div class="info-box">Keys never leave your browser except to authenticate directly with each service API. 11 of 13 data streams require no key at all.</div>
 
     <div class="section-lbl">DATA REFRESH RATES</div>
     <div class="info-box">
-      Aircraft: 15s · Satellites: 2s · TLEs: 1hr<br>
+      Aircraft: 5s · Satellites: 2s · TLEs: 1hr<br>
       Weather: 10min · Earthquakes: 5min<br>
-      Fires: 15min · Space Wx: 5min · Cams: 2min
+      Fires: 10min · Space Wx: 5min · Water: 10min
     </div>
   </div>
 
@@ -854,7 +861,7 @@ body {
 
 <script>
 // ═══════════════════════════════════════════════════
-// EAGLE EYES SLV v4.1 — FULL SITUATIONAL AWARENESS
+// EAGLE EYES SLV v5.0 — FULL SITUATIONAL AWARENESS
 // Data sources (all free, no key unless noted):
 //   Aircraft:    Airplanes.live ADS-B (free, no key)
 //   Satellites:  Celestrak TLEs + satellite.js (visual catalog)
@@ -883,7 +890,8 @@ const NWS_GRID_URL  = 'https://api.weather.gov/points/37.4694,-105.8700';
 // ── KEYS ───────────────────────────────────────────
 const K = {
   goo: localStorage.getItem('slv_goo') || '',
-  oai: localStorage.getItem('slv_oai') || ''
+  oai: localStorage.getItem('slv_oai') || '',
+  orr: localStorage.getItem('slv_orr') || ''
 };
 
 // ── MAP STATE ──────────────────────────────────────
@@ -1568,61 +1576,124 @@ async function fetchEarthquakes() {
 }
 
 // ══════════════════════════════════════════════════
-//  FIRES — NASA FIRMS (EONET, no key)
+//  FIRES — Dual source: EONET + NIFC WFIGS (no key)
 // ══════════════════════════════════════════════════
 async function fetchFires() {
+  const allFires = new Map(); // dedupe by name
+
+  // Source 1: NASA EONET (curated events)
   try {
-    // EONET natural events API — fires, free, no key
-    const url = 'https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=50&bbox=-109,36,-103,40';
+    const url = 'https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=100&bbox=-110,35,-102,41';
     const r = await fetch(url);
-    if (!r.ok) throw new Error('EONET fail');
-    const d = await r.json();
-    const events = d.events || [];
-
-    layers.fire.clearLayers();
-    let fireCount = 0;
-
-    events.forEach(ev => {
-      const geom = ev.geometry?.[0];
-      if (!geom) return;
-      const [lon,lat] = geom.coordinates;
-      fireCount++;
-
-      const icon = L.divIcon({
-        className:'',
-        html:'<div class="fire-icon">🔥</div>',
-        iconSize:[18,18], iconAnchor:[9,9]
+    if (r.ok) {
+      const d = await r.json();
+      (d.events || []).forEach(ev => {
+        const geom = ev.geometry?.[ev.geometry.length - 1]; // latest geometry
+        if (!geom) return;
+        const [lon, lat] = geom.coordinates;
+        allFires.set(ev.title, {
+          name: ev.title,
+          lat, lon,
+          date: geom.date || '',
+          source: 'NASA EONET',
+          acres: null,
+          pct: null
+        });
       });
+    }
+    console.log('[Fire] EONET:', allFires.size, 'events');
+  } catch(e) { console.warn('[Fire] EONET error:', e); }
 
-      L.marker([lat,lon],{icon})
-        .bindTooltip(ev.title, {permanent:false})
-        .on('click', () => showInspector({
-          title:`🔥 ${ev.title}`,
-          rows:[
-            ['Event ID',  ev.id],
-            ['Category',  'Wildfire'],
-            ['Updated',   ev.geometry?.[0]?.date || '—'],
-            ['Lat/Lon',   `${lat.toFixed(3)}, ${lon.toFixed(3)}`],
-            ['Source',    ev.sources?.[0]?.id || '—'],
-          ]
-        }))
-        .addTo(layers.fire);
+  // Source 2: NIFC WFIGS Perimeters (ArcGIS — fire perimeters with acreage)
+  try {
+    const wfUrl = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query' +
+      '?where=1%3D1&outFields=poly_IncidentName,poly_GISAcres,attr_POOState,poly_DateCurrent' +
+      '&geometry=-110,35,-102,41&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects' +
+      '&returnGeometry=true&returnCentroid=true&resultRecordCount=50&f=json';
+    const r2 = await fetch(wfUrl);
+    if (r2.ok) {
+      const d2 = await r2.json();
+      (d2.features || []).forEach(f => {
+        const a = f.attributes;
+        const name = a.poly_IncidentName || 'Unknown Fire';
+        const acres = a.poly_GISAcres;
+        const state = a.attr_POOState || '';
+        const date = a.poly_DateCurrent;
+        // Get centroid from geometry rings
+        let lat = 0, lon = 0;
+        if (f.geometry?.rings?.[0]) {
+          const ring = f.geometry.rings[0];
+          ring.forEach(pt => { lon += pt[0]; lat += pt[1]; });
+          lon /= ring.length; lat /= ring.length;
+        }
+        if (lat && lon) {
+          const existing = allFires.get(name);
+          if (existing) {
+            // Merge: add acreage from WFIGS to EONET entry
+            existing.acres = acres;
+            existing.source = 'EONET + NIFC';
+          } else {
+            allFires.set(name, {
+              name: name + (state ? ', ' + state.replace('US-','') : ''),
+              lat, lon,
+              date: date ? new Date(date).toISOString() : '',
+              source: 'NIFC WFIGS',
+              acres: acres,
+              pct: null
+            });
+          }
+        }
+      });
+    }
+    console.log('[Fire] Total after WFIGS merge:', allFires.size);
+  } catch(e) { console.warn('[Fire] WFIGS error:', e); }
 
-      addAlert('danger', `🔥 Active fire: ${ev.title}`);
+  // Render all fires on map
+  layers.fire.clearLayers();
+  let fireCount = 0;
+  const listHtml = [];
+
+  allFires.forEach(fire => {
+    fireCount++;
+    const acresTxt = fire.acres ? Math.round(fire.acres).toLocaleString() + ' acres' : 'size unknown';
+    const isLarge = fire.acres && fire.acres > 1000;
+
+    const icon = L.divIcon({
+      className:'',
+      html: '<div style="font-size:' + (isLarge ? '22' : '16') + 'px;' +
+        (isLarge ? 'filter:drop-shadow(0 0 8px rgba(255,80,0,.9));' : '') +
+        '">🔥</div>',
+      iconSize: isLarge ? [24,24] : [18,18],
+      iconAnchor: isLarge ? [12,12] : [9,9]
     });
 
-    document.getElementById('cnt-fire').textContent = `${fireCount} active`;
+    L.marker([fire.lat, fire.lon], {icon})
+      .bindTooltip(fire.name + '\n' + acresTxt, {permanent: false})
+      .on('click', () => showInspector({
+        title: '🔥 ' + fire.name,
+        rows: [
+          ['Size',      acresTxt],
+          ['Updated',   fire.date ? new Date(fire.date).toLocaleString() : '—'],
+          ['Source',     fire.source],
+          ['Lat/Lon',   fire.lat.toFixed(3) + ', ' + fire.lon.toFixed(3)],
+        ]
+      }))
+      .addTo(layers.fire);
 
-    document.getElementById('fire-list').innerHTML = events.length
-      ? events.slice(0,5).map(ev =>
-          `<div class="alert-badge danger">🔥 ${ev.title}</div>`
-        ).join('')
-      : '<div class="info-box" style="color:var(--accent2)">✓ No active fires in region.</div>';
+    if (isLarge) {
+      addAlert('danger', '🔥 LARGE FIRE: ' + fire.name + ' — ' + acresTxt);
+    } else {
+      addAlert('warn', '🔥 Active fire: ' + fire.name);
+    }
 
-  } catch(e) {
-    console.error('Fire error:', e);
-    document.getElementById('fire-list').textContent = 'Fire data unavailable.';
-  }
+    listHtml.push('<div class="alert-badge ' + (isLarge ? 'danger' : 'warn') + '">🔥 ' +
+      fire.name + (fire.acres ? ' — ' + acresTxt : '') + '</div>');
+  });
+
+  document.getElementById('cnt-fire').textContent = fireCount + ' active';
+  document.getElementById('fire-list').innerHTML = listHtml.length > 0 ?
+    listHtml.join('') :
+    '<div class="info-box" style="color:var(--accent2)">✓ No active fires in region.</div>';
 }
 
 // ══════════════════════════════════════════════════
@@ -1722,12 +1793,14 @@ function addTickerItem(cls, text) {
 }
 
 // ══════════════════════════════════════════════════
-//  AI THEATER SUMMARY (multi-domain)
+//  AI ANALYST — OpenRouter free model (or OpenAI fallback)
 // ══════════════════════════════════════════════════
 async function generateAISummary() {
-  if (!K.oai) { alert('Enter your OpenAI API key in the KEYS tab.'); return; }
+  const useOpenRouter = !!K.orr;
+  const useOpenAI = !!K.oai;
+  if (!useOpenRouter && !useOpenAI) { alert('Enter an OpenRouter key (free) or OpenAI key in the KEYS tab.'); return; }
 
-  openModal('GENERATING FULL SA BRIEF…', 'Querying AI analyst across all data streams…');
+  openModal('GENERATING SA BRIEF…', 'Querying AI analyst across all data streams…');
 
   const wxCond  = document.getElementById('wx-cond')?.textContent  || '—';
   const wxTemp  = document.getElementById('wx-temp')?.textContent  || '—';
@@ -1735,42 +1808,90 @@ async function generateAISummary() {
   const kp      = document.getElementById('sw-kp')?.textContent    || '—';
   const acCount = acMarkers.size;
   const milCount = [...acMarkers.values()].filter(a => a.callsign?.includes('[MIL]')).length;
-  const satList = satObjects.map(s=>`${s.name} at ${s.alt?.toFixed(0)||'?'}km`).join(', ');
-  const alertList = alerts.slice(-8).map(a=>a.msg).join('; ') || 'none';
-
+  const satList = satObjects.slice(0,10).map(s => s.name + ' at ' + (s.alt?.toFixed(0)||'?') + 'km').join(', ');
+  const alertList = alerts.slice(-12).map(a => a.msg).join('; ') || 'none';
+  const fireCount = document.getElementById('cnt-fire')?.textContent || '—';
+  const fireDetails = (document.getElementById('fire-list')?.textContent || '').substring(0, 500);
   const c = map.getCenter();
 
-  const prompt = `You are a military/intelligence theater analyst. Generate a comprehensive situational awareness brief for the San Luis Valley, Colorado (37.5°N, 105.9°W) as of ${new Date().toUTCString()}.
-
-LIVE SENSOR DATA:
-Air Domain: ${acCount} aircraft in monitoring zone
-Space: Satellites tracked overhead: ${satList}
-Space Weather: Kp Index = ${kp}
-Weather (Alamosa CO): ${wxCond}, ${wxTemp}, Wind: ${wxWind}
-Active Alerts: ${alertList}
-Map Center: ${c.lat.toFixed(3)}°N ${c.lng.toFixed(3)}°W
-
-Write a 6-8 sentence professional intelligence brief covering:
-1. Air domain status
-2. Orbital/space environment assessment
-3. Atmospheric conditions affecting operations
-4. Ground/environmental threats (fires, seismic)
-5. One prioritized actionable recommendation
-
-Use precise, military-style language. Be factual and grounded.`;
+  const prompt = 'You are a military/intelligence theater analyst. Generate a comprehensive situational awareness brief for the San Luis Valley, Colorado (37.5°N, 105.9°W) as of ' + new Date().toUTCString() + '.\n\n' +
+    'LIVE SENSOR DATA:\n' +
+    'Air Domain: ' + acCount + ' aircraft (' + milCount + ' military)\n' +
+    'Space: ' + satList + '\nSpace Weather: Kp=' + kp + '\n' +
+    'Weather (Alamosa CO): ' + wxCond + ', ' + wxTemp + ', Wind: ' + wxWind + '\n' +
+    'Fires: ' + fireCount + ' — ' + fireDetails + '\n' +
+    'Alerts: ' + alertList + '\n\n' +
+    'Write 8-12 sentences covering: air domain, space, weather, FIRE THREAT (prioritize if active), seismic, and 2 actionable recommendations. Military-style language. If fires are active, lead with that.';
 
   try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method:'POST',
-      headers:{'Authorization':`Bearer ${K.oai}`,'Content-Type':'application/json'},
-      body:JSON.stringify({ model:'gpt-4o-mini', max_tokens:500, messages:[{role:'user',content:prompt}] })
+    const apiUrl = useOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+    const hdrs = { 'Authorization': 'Bearer ' + (useOpenRouter ? K.orr : K.oai), 'Content-Type': 'application/json' };
+    if (useOpenRouter) { hdrs['HTTP-Referer'] = window.location.href; hdrs['X-Title'] = 'Eagle Eyes SLV'; }
+
+    const r = await fetch(apiUrl, { method:'POST', headers: hdrs,
+      body: JSON.stringify({ model: useOpenRouter ? 'openrouter/free' : 'gpt-4o-mini', max_tokens:800, messages:[{role:'user',content:prompt}] })
     });
-    if (!r.ok) { const e=await r.json(); openModal('AI ERROR',e.error?.message||r.status); return; }
+    if (!r.ok) { const e=await r.json().catch(()=>({})); openModal('AI ERROR', (e.error?.message||'Status '+r.status)); return; }
     const d = await r.json();
-    openModal(`SA BRIEF — ${new Date().toUTCString()}`, d.choices[0].message.content);
+    const content = d.choices?.[0]?.message?.content || 'No response.';
+    const model = d.model || (useOpenRouter ? 'OpenRouter Free' : 'gpt-4o-mini');
+    openModal('SA BRIEF — ' + new Date().toUTCString(), content + '\n\n— Model: ' + model);
   } catch(e) {
-    openModal('AI ERROR', 'Failed to reach OpenAI. Check key and network.');
+    openModal('AI ERROR', 'Failed to reach AI provider.\n' + e.message);
   }
+}
+
+// ── AI CHAT — interactive Q&A about dashboard data ──
+function openAIChat() {
+  if (!K.orr && !K.oai) { alert('Enter an OpenRouter key (free) or OpenAI key in the KEYS tab.'); return; }
+  openModal('🦅 AI ANALYST',
+    '<div style="display:flex;flex-direction:column;height:100%;gap:8px;">' +
+    '<div id="ai-chat-log" style="flex:1;overflow-y:auto;font-size:11px;line-height:1.6;padding:8px;background:rgba(0,0,0,.3);border-radius:4px;border:1px solid var(--border);min-height:150px;">' +
+    '<div style="color:var(--accent2)">🦅 Eagle Eyes AI Analyst ready. Ask about fires, weather, aircraft, or anything on the dashboard.</div></div>' +
+    '<div style="display:flex;gap:6px;">' +
+    '<input id="ai-chat-input" type="text" placeholder="Ask about fires, weather, aircraft..." style="flex:1;background:var(--panel);border:1px solid var(--border2);color:var(--text);padding:8px;border-radius:4px;font-size:12px;" onkeydown="if(event.key===\'Enter\')sendAIChat()">' +
+    '<button class="btn primary" onclick="sendAIChat()" style="white-space:nowrap;">Ask</button></div></div>'
+  );
+  setTimeout(() => document.getElementById('ai-chat-input')?.focus(), 100);
+}
+
+async function sendAIChat() {
+  const input = document.getElementById('ai-chat-input');
+  const log = document.getElementById('ai-chat-log');
+  const q = input.value.trim(); if (!q) return;
+  log.innerHTML += '<div style="color:var(--text);margin-top:8px;"><b>You:</b> ' + q.replace(/</g,'&lt;') + '</div>';
+  log.innerHTML += '<div id="ai-typing" style="color:var(--muted);font-style:italic;">Analyzing...</div>';
+  input.value = ''; log.scrollTop = log.scrollHeight;
+
+  const ctx = 'Dashboard data (' + new Date().toUTCString() + '): Aircraft: ' + acMarkers.size +
+    ' | Fires: ' + (document.getElementById('cnt-fire')?.textContent||'—') + ' (' + (document.getElementById('fire-list')?.textContent||'').substring(0,300) + ')' +
+    ' | Weather: ' + (document.getElementById('wx-cond')?.textContent||'') + ' ' + (document.getElementById('wx-temp')?.textContent||'') + ' Wind:' + (document.getElementById('wx-wind')?.textContent||'') +
+    ' | Quakes: ' + (document.getElementById('cnt-eq')?.textContent||'—') +
+    ' | Water: ' + (document.getElementById('cnt-water')?.textContent||'—') +
+    ' | Alerts: ' + alerts.slice(-8).map(a=>a.msg).join('; ') +
+    ' | Location: San Luis Valley, CO';
+
+  const useOR = !!K.orr;
+  const hdrs = { 'Authorization': 'Bearer ' + (useOR ? K.orr : K.oai), 'Content-Type': 'application/json' };
+  if (useOR) { hdrs['HTTP-Referer'] = window.location.href; hdrs['X-Title'] = 'Eagle Eyes SLV'; }
+
+  try {
+    const r = await fetch(useOR ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions', {
+      method:'POST', headers: hdrs,
+      body: JSON.stringify({ model: useOR ? 'openrouter/free' : 'gpt-4o-mini', max_tokens:600,
+        messages: [
+          {role:'system', content:'You are an intelligence analyst for Eagle Eyes SLV, a geospatial dashboard monitoring the San Luis Valley, Colorado. Answer using the live data provided. Be concise, factual, actionable. Prioritize safety.'},
+          {role:'user', content: ctx + '\n\nQuestion: ' + q}
+        ]
+      })
+    });
+    document.getElementById('ai-typing')?.remove();
+    if (!r.ok) { log.innerHTML += '<div style="color:var(--danger);">Error: Status ' + r.status + '</div>'; return; }
+    const d = await r.json();
+    const ans = d.choices?.[0]?.message?.content || 'No response.';
+    log.innerHTML += '<div style="color:var(--accent2);margin-top:4px;"><b>🦅:</b> ' + ans.replace(/\n/g,'<br>') + '</div>';
+    log.scrollTop = log.scrollHeight;
+  } catch(e) { document.getElementById('ai-typing')?.remove(); log.innerHTML += '<div style="color:var(--danger);">Error: ' + e.message + '</div>'; }
 }
 
 // ══════════════════════════════════════════════════
@@ -1817,13 +1938,16 @@ function switchTab(n) {
 function loadKeyFields() {
   document.getElementById('k-goo').value = K.goo;
   document.getElementById('k-oai').value = K.oai;
+  document.getElementById('k-orr').value = K.orr;
 }
 
 function saveKeys() {
   K.goo = document.getElementById('k-goo').value.trim();
   K.oai = document.getElementById('k-oai').value.trim();
+  K.orr = document.getElementById('k-orr').value.trim();
   localStorage.setItem('slv_goo', K.goo);
   localStorage.setItem('slv_oai', K.oai);
+  localStorage.setItem('slv_orr', K.orr);
   alert('Keys saved.');
 }
 
@@ -2128,19 +2252,17 @@ function loadUFOSightings() {
 }
 
 // ══════════════════════════════════════════════════
-//  CDOT WEBCAMS (no key)
+//  CDOT WEBCAMS — COtrip links (camera images transitioning 2025-2026)
 // ══════════════════════════════════════════════════
 const CDOT_CAMS = [
-  { id:'antonito',   name:'Antonito — Hwys 285 & 17 (E)',  lat:37.0742, lon:-105.6579, url:'https://cocam.carsprogram.org/Cellular/017W03900CAM1RHS-E.jpg' },
-  { id:'laveta',     name:'La Veta Pass — US 160 (W)',      lat:37.5029, lon:-105.2179, url:'https://cocam.carsprogram.org/Cellular/160W27840CAM1RHS-W.jpg' },
-  { id:'wolfcreek-e',name:'Wolf Creek Pass — US 160 (E)',   lat:37.4866, lon:-106.7952, url:'https://cocam.carsprogram.org/Cellular/160E16820CAM1RHS-W.jpg' },
-  { id:'wolfcreek-w',name:'Wolf Creek Pass — US 160 (W)',   lat:37.4866, lon:-106.7952, url:'https://cocam.carsprogram.org/Cellular/160E16820CAM1RHS-E.jpg' },
-  { id:'center',     name:'Center — CO-112 (E)',            lat:37.7536, lon:-106.1091, url:'https://cocam.carsprogram.org/Cellular/112W01315CAM1NEC-E.jpg' },
-  { id:'poncha',     name:'Poncha Pass — US 285 (S)',       lat:38.4184, lon:-106.0657, url:'https://cocam.carsprogram.org/Cellular/285S11910CAM1RHS-S.jpg' },
-  { id:'villagrove-n',name:'Villa Grove — US 285 (N)',      lat:38.2541, lon:-105.9677, url:'https://cocam.carsprogram.org/Cellular/285N10025CAM1RHS-N.jpg' },
-  { id:'villagrove-s',name:'Villa Grove — US 285 (S)',      lat:38.2541, lon:-105.9677, url:'https://cocam.carsprogram.org/Cellular/285N10025CAM1RHS-S.jpg' },
-  { id:'southfork',  name:'South Fork — US 160 (W)',        lat:37.6716, lon:-106.6397, url:'https://cocam.carsprogram.org/Snapshots/160W18610CAM1RHS.flv.png' },
-  { id:'border159',  name:'CO/NM Border — Hwy 159 (N)',     lat:36.9945, lon:-105.7233, url:'https://cocam.carsprogram.org/Live_View/CO159000North.jpg' },
+  { id:'antonito',    name:'Antonito — Hwys 285 & 17',      lat:37.0742, lon:-105.6579 },
+  { id:'laveta',      name:'La Veta Pass — US 160',          lat:37.5029, lon:-105.2179 },
+  { id:'wolfcreek',   name:'Wolf Creek Pass — US 160',       lat:37.4866, lon:-106.7952 },
+  { id:'center',      name:'Center — CO-112',                lat:37.7536, lon:-106.1091 },
+  { id:'poncha',      name:'Poncha Pass — US 285',           lat:38.4184, lon:-106.0657 },
+  { id:'villagrove',  name:'Villa Grove — US 285',           lat:38.2541, lon:-105.9677 },
+  { id:'southfork',   name:'South Fork — US 160',            lat:37.6716, lon:-106.6397 },
+  { id:'border159',   name:'CO/NM Border — Hwy 159',         lat:36.9945, lon:-105.7233 },
 ];
 
 function initCamMarkers() {
@@ -2152,47 +2274,29 @@ function initCamMarkers() {
     });
     L.marker([cam.lat, cam.lon], {icon})
       .bindTooltip(cam.name, {permanent:false, direction:'top'})
-      .on('click', () => {
-        // Show camera image in modal
-        const ts = Date.now();
-        openModal(cam.name,
-          `Loading camera image...\n\nDirect URL:\n${cam.url}?${ts}`
-        );
-        // Also open the image
-        const img = new Image();
-        img.onload = () => {
-          document.getElementById('modal-body').innerHTML =
-            `<img src="${cam.url}?${ts}" style="max-width:100%;border-radius:4px;border:1px solid var(--border2);" alt="${cam.name}">` +
-            `<div style="margin-top:8px;font-size:9px;color:var(--muted)">Updated: ${new Date().toUTCString()}</div>`;
-        };
-        img.onerror = () => {
-          document.getElementById('modal-body').textContent =
-            `Camera image unavailable.\nURL: ${cam.url}\n\nTry the external link in the CAMS tab.`;
-        };
-        img.src = cam.url + '?' + ts;
-      })
+      .on('click', () => showInspector({
+        title: '📷 ' + cam.name,
+        rows: [
+          ['Location', cam.name],
+          ['Lat/Lon', cam.lat.toFixed(4) + '°, ' + cam.lon.toFixed(4) + '°'],
+          ['Status', 'View on COtrip.org'],
+        ]
+      }))
       .addTo(map);
   });
 }
 
 function renderCamGrid() {
   const grid = document.getElementById('cam-grid');
-  const ts = Date.now();
   grid.innerHTML = CDOT_CAMS.map(cam =>
-    `<div class="data-card" style="padding:4px;">
-      <div class="card-title" style="margin-bottom:3px;">${cam.name}</div>
-      <img src="${cam.url}?${ts}" alt="${cam.name}"
-        style="width:100%;border-radius:3px;cursor:pointer;border:1px solid var(--border);"
-        onclick="window.open('${cam.url}?${Date.now()}','_blank')"
-        onerror="this.alt='Image unavailable';this.style.height='40px';this.style.opacity='.3';">
-    </div>`
+    '<div class="data-card" style="padding:6px;">' +
+    '<div class="card-title">' + cam.name + '</div>' +
+    '<div class="card-detail" style="font-size:9px;color:var(--muted);">View on COtrip.org</div>' +
+    '</div>'
   ).join('');
 }
 
-function refreshCams() {
-  renderCamGrid();
-  addTickerItem('info', '📷 Camera images refreshed');
-}
+function refreshCams() { renderCamGrid(); }
 
 // ══════════════════════════════════════════════════
 //  UTILS
@@ -2274,19 +2378,18 @@ window.addEventListener('load', async () => {
   renderCamGrid();
 
   renderAlerts();
-  document.getElementById('bottom-status').textContent = 'All streams active — v4.1';
+  document.getElementById('bottom-status').textContent = 'All streams active — v5.0';
 
   // Polling
-  setInterval(fetchAircraft,    15000);
+  setInterval(fetchAircraft,    5000);
   setInterval(propagateSats,    2000);
   setInterval(computePasses,    60000);
   setInterval(loadTLEs,         3600000);
   setInterval(fetchWeather,     600000);
   setInterval(fetchSpaceWeather,300000);
   setInterval(fetchEarthquakes, 300000);
-  setInterval(fetchFires,       900000);
+  setInterval(fetchFires,       600000);
   setInterval(fetchWaterData,   600000);
-  setInterval(renderCamGrid,    120000);
 });
 </script>
 </body>
