@@ -1795,6 +1795,10 @@ function addTickerItem(cls, text) {
 // ══════════════════════════════════════════════════
 //  AI ANALYST — OpenRouter free model (or OpenAI fallback)
 // ══════════════════════════════════════════════════
+const OR_MODEL = 'meta-llama/llama-3.3-70b-instruct:free'; // reliable free model
+
+function cleanVal(v) { return (!v || v === '—' || v === 'NaN' || v === 'undefined') ? 'data unavailable' : v; }
+
 async function generateAISummary() {
   const useOpenRouter = !!K.orr;
   const useOpenAI = !!K.oai;
@@ -1802,26 +1806,45 @@ async function generateAISummary() {
 
   openModal('GENERATING SA BRIEF…', 'Querying AI analyst across all data streams…');
 
-  const wxCond  = document.getElementById('wx-cond')?.textContent  || '—';
-  const wxTemp  = document.getElementById('wx-temp')?.textContent  || '—';
-  const wxWind  = document.getElementById('wx-wind')?.textContent  || '—';
-  const kp      = document.getElementById('sw-kp')?.textContent    || '—';
+  const wxCond  = cleanVal(document.getElementById('wx-cond')?.textContent);
+  const wxTemp  = cleanVal(document.getElementById('wx-temp')?.textContent);
+  const wxWind  = cleanVal(document.getElementById('wx-wind')?.textContent);
+  const kp      = cleanVal(document.getElementById('sw-kp')?.textContent);
   const acCount = acMarkers.size;
   const milCount = [...acMarkers.values()].filter(a => a.callsign?.includes('[MIL]')).length;
-  const satList = satObjects.slice(0,10).map(s => s.name + ' at ' + (s.alt?.toFixed(0)||'?') + 'km').join(', ');
-  const alertList = alerts.slice(-12).map(a => a.msg).join('; ') || 'none';
-  const fireCount = document.getElementById('cnt-fire')?.textContent || '—';
-  const fireDetails = (document.getElementById('fire-list')?.textContent || '').substring(0, 500);
-  const c = map.getCenter();
+  const satList = satObjects.slice(0,6).map(s => s.name + ' (' + (s.alt?.toFixed(0)||'?') + 'km)').join(', ') || 'loading';
+  const alertList = alerts.slice(-10).map(a => a.msg).join('; ') || 'none';
+  const fireCount = cleanVal(document.getElementById('cnt-fire')?.textContent);
+  const eqCount = cleanVal(document.getElementById('cnt-eq')?.textContent);
+  const waterCount = cleanVal(document.getElementById('cnt-water')?.textContent);
 
-  const prompt = 'You are a military/intelligence theater analyst. Generate a comprehensive situational awareness brief for the San Luis Valley, Colorado (37.5°N, 105.9°W) as of ' + new Date().toUTCString() + '.\n\n' +
+  // Extract fire names from sidebar, filtering to only relevant ones
+  const fireEls = document.getElementById('fire-list')?.querySelectorAll('.alert-badge') || [];
+  const fireNames = [...fireEls].map(el => el.textContent.trim()).slice(0, 15).join('; ') || 'none detected';
+
+  const c = map.getCenter();
+  const now = new Date().toUTCString();
+
+  const systemMsg = 'You are a military intelligence theater analyst. You produce clean, professional situational awareness briefs. Rules: Output ONLY the brief itself — no planning, no reasoning, no meta-commentary, no sentence counting. Write exactly 10 sentences in polished military prose. Do not use bullet points or numbered lists.';
+
+  const userMsg = 'Generate a situational awareness brief for the San Luis Valley, Colorado (37.5°N, 105.9°W) as of ' + now + '.\n\n' +
     'LIVE SENSOR DATA:\n' +
-    'Air Domain: ' + acCount + ' aircraft (' + milCount + ' military)\n' +
-    'Space: ' + satList + '\nSpace Weather: Kp=' + kp + '\n' +
-    'Weather (Alamosa CO): ' + wxCond + ', ' + wxTemp + ', Wind: ' + wxWind + '\n' +
-    'Fires: ' + fireCount + ' — ' + fireDetails + '\n' +
-    'Alerts: ' + alertList + '\n\n' +
-    'Write 8-12 sentences covering: air domain, space, weather, FIRE THREAT (prioritize if active), seismic, and 2 actionable recommendations. Military-style language. If fires are active, lead with that.';
+    '- Air: ' + acCount + ' aircraft tracked (' + milCount + ' military)\n' +
+    '- Satellites overhead: ' + satList + '\n' +
+    '- Space weather Kp index: ' + kp + '\n' +
+    '- Weather at Alamosa CO: ' + wxCond + ', temp ' + wxTemp + ', wind ' + wxWind + '\n' +
+    '- Active fires: ' + fireCount + '. Fire details: ' + fireNames + '\n' +
+    '- Seismic: ' + eqCount + '\n' +
+    '- Stream gauges: ' + waterCount + '\n' +
+    '- Recent alerts: ' + alertList + '\n\n' +
+    'Write exactly 10 sentences as a flowing paragraph. Cover these topics in order:\n' +
+    '1. FIRE THREAT (lead with this if any fires are active — name the fires, their sizes, proximity to SLV, smoke and wind risk)\n' +
+    '2. Air domain status\n' +
+    '3. Space/orbital environment\n' +
+    '4. Weather conditions and operational impact\n' +
+    '5. Seismic and hydrological status\n' +
+    '6. Two specific actionable recommendations\n\n' +
+    'Output only the brief. No preamble. No reasoning. Start directly with the first sentence.';
 
   try {
     const apiUrl = useOpenRouter ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
@@ -1829,13 +1852,23 @@ async function generateAISummary() {
     if (useOpenRouter) { hdrs['HTTP-Referer'] = window.location.href; hdrs['X-Title'] = 'Eagle Eyes SLV'; }
 
     const r = await fetch(apiUrl, { method:'POST', headers: hdrs,
-      body: JSON.stringify({ model: useOpenRouter ? 'openrouter/free' : 'gpt-4o-mini', max_tokens:800, messages:[{role:'user',content:prompt}] })
+      body: JSON.stringify({
+        model: useOpenRouter ? OR_MODEL : 'gpt-4o-mini',
+        max_tokens: 800,
+        temperature: 0.4,
+        messages: [
+          { role: 'system', content: systemMsg },
+          { role: 'user', content: userMsg }
+        ]
+      })
     });
     if (!r.ok) { const e=await r.json().catch(()=>({})); openModal('AI ERROR', (e.error?.message||'Status '+r.status)); return; }
     const d = await r.json();
-    const content = d.choices?.[0]?.message?.content || 'No response.';
-    const model = d.model || (useOpenRouter ? 'OpenRouter Free' : 'gpt-4o-mini');
-    openModal('SA BRIEF — ' + new Date().toUTCString(), content + '\n\n— Model: ' + model);
+    let content = d.choices?.[0]?.message?.content || 'No response generated.';
+    // Clean up any reasoning artifacts the model might leak
+    content = content.replace(/^(Sentence \d+:|Let me|I'll|Here's|Sure|Okay|Let's|We need)[^\n]*\n*/gim, '').trim();
+    const model = d.model || (useOpenRouter ? OR_MODEL : 'gpt-4o-mini');
+    openModal('SA BRIEF — ' + new Date().toLocaleString(), content + '\n\n— Model: ' + model);
   } catch(e) {
     openModal('AI ERROR', 'Failed to reach AI provider.\n' + e.message);
   }
@@ -1878,9 +1911,9 @@ async function sendAIChat() {
   try {
     const r = await fetch(useOR ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions', {
       method:'POST', headers: hdrs,
-      body: JSON.stringify({ model: useOR ? 'openrouter/free' : 'gpt-4o-mini', max_tokens:600,
+      body: JSON.stringify({ model: useOR ? OR_MODEL : 'gpt-4o-mini', max_tokens:600,
         messages: [
-          {role:'system', content:'You are an intelligence analyst for Eagle Eyes SLV, a geospatial dashboard monitoring the San Luis Valley, Colorado. Answer using the live data provided. Be concise, factual, actionable. Prioritize safety.'},
+          {role:'system', content:'You are an intelligence analyst for Eagle Eyes SLV, a geospatial dashboard monitoring the San Luis Valley, Colorado. Answer questions using the live dashboard data provided. Be concise, factual, and actionable. Prioritize safety. Do not show your reasoning process — output only your answer.'},
           {role:'user', content: ctx + '\n\nQuestion: ' + q}
         ]
       })
