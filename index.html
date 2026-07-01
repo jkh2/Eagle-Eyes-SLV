@@ -480,7 +480,6 @@ body {
 #modal-body {
   padding:18px; overflow-y:auto;
   font-size:12px; line-height:1.75;
-  white-space:pre-wrap;
   font-family:'Share Tech Mono',monospace;
 }
 #modal-footer {
@@ -695,6 +694,10 @@ body {
     <div class="layer-row">
       <label class="toggle"><input type="checkbox" id="tog-goes" onchange="toggleLayer('goes')"><span class="tslider"></span></label>
       <label for="tog-goes">🌥 GOES-West Imagery</label>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-nexrad" onchange="toggleLayer('nexrad')"><span class="tslider"></span></label>
+      <label for="tog-nexrad">🌧 NEXRAD Radar (live precip)</label>
       <div class="layer-count" id="cnt-goes">—</div>
     </div>
 
@@ -1066,26 +1069,19 @@ function initMap() {
 }
 
 // ══════════════════════════════════════════════════
-//  AIRCRAFT
+//  AIRCRAFT — smooth marker updates (no clear/redraw blink)
 // ══════════════════════════════════════════════════
 async function fetchAircraft() {
-  // Airplanes.live: free, no key, no auth. Rate limit: 1 req/sec.
-  // /point/lat/lon/radius(nm) — max 250nm
-  const url = `https://api.airplanes.live/v2/point/${SLV.lat}/${SLV.lon}/80`;
+  const url = 'https://api.airplanes.live/v2/point/' + SLV.lat + '/' + SLV.lon + '/80';
 
   try {
     const r = await fetch(url);
-    if (r.status === 429) {
-      setVal('ac-apistatus', 'RATE LIMITED', 'warn');
-      return;
-    }
+    if (r.status === 429) { setVal('ac-apistatus', 'RATE LIMITED', 'warn'); return; }
     if (!r.ok) { setVal('ac-apistatus', 'API ERR '+r.status, 'err'); return; }
     const d = await r.json();
 
-    layers.ac.clearLayers();
-    acMarkers.clear();
-
     const aircraft = d.ac || [];
+    const currentHexes = new Set();
     let shown = 0;
 
     aircraft.forEach(a => {
@@ -1093,12 +1089,11 @@ async function fetchAircraft() {
       const call = (a.flight||'').trim() || a.r || hex;
       const lat  = a.lat;
       const lon  = a.lon;
-      const altBaro = a.alt_baro;  // feet or "ground"
+      const altBaro = a.alt_baro;
       const heading = a.track || a.true_heading || 0;
-      const speed   = a.gs;       // knots (ground speed)
+      const speed   = a.gs;
       const onGrnd  = altBaro === 'ground';
-      const category = a.category || '';
-      const vertRate = a.baro_rate; // ft/min
+      const vertRate = a.baro_rate;
       const squawk   = a.squawk || '';
       const reg      = a.r || '';
       const acType   = a.t || '';
@@ -1106,62 +1101,87 @@ async function fetchAircraft() {
       if (lat == null || lon == null) return;
 
       const altFt = onGrnd ? 0 : (typeof altBaro === 'number' ? altBaro : 0);
-
-      // Altitude filter
       if (altFt < altFilter && !onGrnd) return;
-
-      // Bounding box filter (airplanes.live returns circle, trim to our box)
       if (lat < BBOX.minLat || lat > BBOX.maxLat || lon < BBOX.minLon || lon > BBOX.maxLon) return;
 
       shown++;
-      const isMil = a.dbFlags & 1; // military flag
+      currentHexes.add(hex);
+      const isMil = a.dbFlags & 1;
       const iconColor = isMil ? 'filter:drop-shadow(0 0 4px rgba(204,51,51,.8))' :
                                 'filter:drop-shadow(0 0 4px rgba(136,221,85,.6))';
-      const icon = L.divIcon({
-        className:'',
-        html:`<div class="ac-icon" style="transform:rotate(${heading}deg);${iconColor}">✈</div>`,
-        iconSize:[22,22], iconAnchor:[11,11]
-      });
 
-      const m = L.marker([lat,lon],{icon})
-        .bindTooltip(`${call}`, {permanent:false, direction:'top'})
-        .on('click', () => showInspector({
-          title: `✈ ${call}${isMil ? ' [MIL]' : ''}`,
-          rows:[
-            ['Hex/ICAO',  hex],
-            ['Registration', reg || '—'],
-            ['Type',      acType || '—'],
-            ['Squawk',    squawk || '—'],
-            ['Altitude',  onGrnd ? 'GROUND' : `${altFt.toLocaleString()} ft`],
-            ['Speed',     speed ? `${Math.round(speed)} kts GS` : '—'],
-            ['Heading',   `${Math.round(heading)}°`],
-            ['Vert Rate', vertRate ? `${vertRate} ft/min` : '—'],
-            ['Lat/Lon',   `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`],
-            ['Source',    a.type || 'ADS-B'],
-          ]
-        }));
+      const existing = acMarkers.get(hex);
+      if (existing) {
+        // Smooth update — move existing marker
+        existing.marker.setLatLng([lat, lon]);
+        // Update icon rotation
+        const iconEl = existing.marker.getElement();
+        if (iconEl) {
+          const acIcon = iconEl.querySelector('.ac-icon');
+          if (acIcon) acIcon.style.transform = 'rotate(' + heading + 'deg)';
+        }
+        // Update tooltip
+        existing.marker.setTooltipContent(call);
+        // Update stored data
+        existing.alt = altFt;
+        existing.callsign = call + (isMil ? ' [MIL]' : '');
+        existing.data = a;
+      } else {
+        // New aircraft — create marker
+        const icon = L.divIcon({
+          className:'',
+          html:'<div class="ac-icon" style="transform:rotate(' + heading + 'deg);' + iconColor + '">✈</div>',
+          iconSize:[22,22], iconAnchor:[11,11]
+        });
 
-      layers.ac.addLayer(m);
-      acMarkers.set(hex, { marker:m, alt:altFt, callsign:call });
+        const m = L.marker([lat,lon],{icon})
+          .bindTooltip(call, {permanent:false, direction:'top'})
+          .on('click', function() {
+            const ac = acMarkers.get(hex);
+            const ad = ac?.data || a;
+            showInspector({
+              title: '✈ ' + ((ad.flight||'').trim() || ad.r || hex) + ((ad.dbFlags & 1) ? ' [MIL]' : ''),
+              rows:[
+                ['Hex/ICAO',     hex],
+                ['Registration', ad.r || '—'],
+                ['Type',         ad.t || '—'],
+                ['Squawk',       ad.squawk || '—'],
+                ['Altitude',     ad.alt_baro === 'ground' ? 'GROUND' : (typeof ad.alt_baro === 'number' ? ad.alt_baro.toLocaleString() + ' ft' : '—')],
+                ['Speed',        ad.gs ? Math.round(ad.gs) + ' kts GS' : '—'],
+                ['Heading',      Math.round(ad.track || ad.true_heading || 0) + '°'],
+                ['Vert Rate',    ad.baro_rate ? ad.baro_rate + ' ft/min' : '—'],
+                ['Lat/Lon',      ad.lat?.toFixed(4) + '°, ' + ad.lon?.toFixed(4) + '°'],
+                ['Source',       ad.type || 'ADS-B'],
+              ]
+            });
+          });
+
+        layers.ac.addLayer(m);
+        acMarkers.set(hex, { marker:m, alt:altFt, callsign:call + (isMil ? ' [MIL]' : ''), data:a });
+      }
+    });
+
+    // Remove aircraft that left the area
+    acMarkers.forEach((val, hex) => {
+      if (!currentHexes.has(hex)) {
+        layers.ac.removeLayer(val.marker);
+        acMarkers.delete(hex);
+      }
     });
 
     setVal('ac-inzone',    shown, shown > 0 ? 'info' : null);
     setVal('ac-updated',   new Date().toUTCString().slice(-13,-4)+' UTC');
     setVal('ac-apistatus', 'OK', 'ok');
-    document.getElementById('cnt-ac').textContent = `${shown} aircraft`;
+    document.getElementById('cnt-ac').textContent = shown + ' aircraft';
 
-    // Alert for military aircraft
+    // Alerts (only on new military/squawk detections)
     aircraft.forEach(a => {
       if (a.dbFlags & 1 && a.lat && a.lon) {
-        addAlert('info', `🛩 Military: ${(a.flight||'').trim()||a.hex} ${a.t||''} ${a.alt_baro==='ground'?'GND':a.alt_baro+'ft'}`);
+        addAlert('info', '🛩 Military: ' + ((a.flight||'').trim()||a.hex) + ' ' + (a.t||'') + ' ' + (a.alt_baro==='ground'?'GND':a.alt_baro+'ft'));
       }
-    });
-
-    // Squawk alerts
-    aircraft.forEach(a => {
-      if (a.squawk === '7500') addAlert('danger', `🚨 HIJACK SQUAWK 7500: ${(a.flight||'').trim()||a.hex}`);
-      if (a.squawk === '7600') addAlert('warn',   `📡 COMMS LOST 7600: ${(a.flight||'').trim()||a.hex}`);
-      if (a.squawk === '7700') addAlert('danger',  `🚨 EMERGENCY 7700: ${(a.flight||'').trim()||a.hex}`);
+      if (a.squawk === '7500') addAlert('danger', '🚨 HIJACK SQUAWK 7500: ' + ((a.flight||'').trim()||a.hex));
+      if (a.squawk === '7600') addAlert('warn',   '📡 COMMS LOST 7600: ' + ((a.flight||'').trim()||a.hex));
+      if (a.squawk === '7700') addAlert('danger',  '🚨 EMERGENCY 7700: ' + ((a.flight||'').trim()||a.hex));
     });
 
   } catch(e) {
@@ -1578,8 +1598,15 @@ async function fetchEarthquakes() {
 // ══════════════════════════════════════════════════
 //  FIRES — Dual source: EONET + NIFC WFIGS (no key)
 // ══════════════════════════════════════════════════
+function distMiles(lat1, lon1, lat2, lon2) {
+  const R = 3959; // Earth radius miles
+  const dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 async function fetchFires() {
-  const allFires = new Map(); // dedupe by name
+  const allFires = new Map();
 
   // Source 1: NASA EONET (curated events)
   try {
@@ -1588,60 +1615,80 @@ async function fetchFires() {
     if (r.ok) {
       const d = await r.json();
       (d.events || []).forEach(ev => {
-        const geom = ev.geometry?.[ev.geometry.length - 1]; // latest geometry
+        const geom = ev.geometry?.[ev.geometry.length - 1];
         if (!geom) return;
         const [lon, lat] = geom.coordinates;
         allFires.set(ev.title, {
-          name: ev.title,
-          lat, lon,
-          date: geom.date || '',
-          source: 'NASA EONET',
-          acres: null,
-          pct: null
+          name: ev.title, lat, lon,
+          date: geom.date || '', source: 'NASA EONET',
+          acres: null, pct: null, cause: null, behavior: null,
+          county: null, state: null, fuel: null, personnel: null,
+          complexity: null, desc: null, discovered: null
         });
       });
     }
     console.log('[Fire] EONET:', allFires.size, 'events');
   } catch(e) { console.warn('[Fire] EONET error:', e); }
 
-  // Source 2: NIFC WFIGS Perimeters (ArcGIS — fire perimeters with acreage)
+  // Source 2: NIFC WFIGS Perimeters — enriched fields
   try {
+    const fields = 'poly_IncidentName,poly_GISAcres,attr_POOState,attr_POOCounty,' +
+      'attr_PercentContained,attr_FireCause,attr_FireBehaviorGeneral,' +
+      'attr_IncidentComplexityLevel,attr_TotalIncidentPersonnel,' +
+      'attr_PrimaryFuelModel,attr_IncidentShortDescription,' +
+      'attr_FireDiscoveryDateTime,attr_IncidentSize,attr_POOLandownerCategory,' +
+      'poly_DateCurrent';
     const wfUrl = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query' +
-      '?where=1%3D1&outFields=poly_IncidentName,poly_GISAcres,attr_POOState,poly_DateCurrent' +
+      '?where=1%3D1&outFields=' + fields +
       '&geometry=-110,35,-102,41&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects' +
-      '&returnGeometry=true&returnCentroid=true&resultRecordCount=50&f=json';
+      '&returnGeometry=true&resultRecordCount=50&f=json';
     const r2 = await fetch(wfUrl);
     if (r2.ok) {
       const d2 = await r2.json();
       (d2.features || []).forEach(f => {
         const a = f.attributes;
-        const name = a.poly_IncidentName || 'Unknown Fire';
-        const acres = a.poly_GISAcres;
+        const name = (a.poly_IncidentName || 'Unknown Fire').trim();
+        const acres = a.poly_GISAcres || a.attr_IncidentSize;
         const state = a.attr_POOState || '';
-        const date = a.poly_DateCurrent;
-        // Get centroid from geometry rings
+        const county = a.attr_POOCounty || '';
+        const pct = a.attr_PercentContained;
+        const cause = a.attr_FireCause;
+        const behavior = a.attr_FireBehaviorGeneral;
+        const complexity = a.attr_IncidentComplexityLevel;
+        const personnel = a.attr_TotalIncidentPersonnel;
+        const fuel = a.attr_PrimaryFuelModel;
+        const desc = a.attr_IncidentShortDescription;
+        const discovered = a.attr_FireDiscoveryDateTime;
+        const dateCurrent = a.poly_DateCurrent;
+        const landowner = a.attr_POOLandownerCategory;
+
         let lat = 0, lon = 0;
         if (f.geometry?.rings?.[0]) {
           const ring = f.geometry.rings[0];
           ring.forEach(pt => { lon += pt[0]; lat += pt[1]; });
           lon /= ring.length; lat /= ring.length;
         }
-        if (lat && lon) {
-          const existing = allFires.get(name);
-          if (existing) {
-            // Merge: add acreage from WFIGS to EONET entry
-            existing.acres = acres;
-            existing.source = 'EONET + NIFC';
-          } else {
-            allFires.set(name, {
-              name: name + (state ? ', ' + state.replace('US-','') : ''),
-              lat, lon,
-              date: date ? new Date(date).toISOString() : '',
-              source: 'NIFC WFIGS',
-              acres: acres,
-              pct: null
-            });
-          }
+        if (!lat || !lon) return;
+
+        const fireData = {
+          name: name + (state ? ', ' + state.replace('US-','') : ''),
+          lat, lon,
+          date: dateCurrent ? new Date(dateCurrent).toISOString() : '',
+          source: 'NIFC WFIGS',
+          acres, pct, cause, behavior, county,
+          state: state.replace('US-',''),
+          fuel, personnel, complexity, desc,
+          discovered: discovered ? new Date(discovered).toLocaleString() : null,
+          landowner
+        };
+
+        const existing = allFires.get(name);
+        if (existing) {
+          // Merge WFIGS data into EONET entry
+          Object.assign(existing, fireData);
+          existing.source = 'EONET + NIFC';
+        } else {
+          allFires.set(name, fireData);
         }
       });
     }
@@ -1657,6 +1704,9 @@ async function fetchFires() {
     fireCount++;
     const acresTxt = fire.acres ? Math.round(fire.acres).toLocaleString() + ' acres' : 'size unknown';
     const isLarge = fire.acres && fire.acres > 1000;
+    const dist = distMiles(SLV.lat, SLV.lon, fire.lat, fire.lon);
+    const distTxt = Math.round(dist) + ' mi from SLV';
+    const pctTxt = fire.pct != null ? fire.pct + '% contained' : '—';
 
     const icon = L.divIcon({
       className:'',
@@ -1667,27 +1717,39 @@ async function fetchFires() {
       iconAnchor: isLarge ? [12,12] : [9,9]
     });
 
+    // Build rich inspector rows
+    const rows = [
+      ['Size',          acresTxt],
+      ['Containment',   pctTxt],
+      ['Distance',      distTxt],
+    ];
+    if (fire.county)     rows.push(['County',     fire.county + (fire.state ? ', ' + fire.state : '')]);
+    if (fire.cause)      rows.push(['Cause',      fire.cause]);
+    if (fire.behavior)   rows.push(['Behavior',   fire.behavior]);
+    if (fire.fuel)       rows.push(['Fuel Type',   fire.fuel]);
+    if (fire.complexity) rows.push(['Complexity',  fire.complexity]);
+    if (fire.personnel)  rows.push(['Personnel',   fire.personnel + ' assigned']);
+    if (fire.discovered) rows.push(['Discovered',  fire.discovered]);
+    if (fire.desc)       rows.push(['Location',    fire.desc]);
+    if (fire.landowner)  rows.push(['Land',        fire.landowner]);
+    rows.push(['Updated',  fire.date ? new Date(fire.date).toLocaleString() : '—']);
+    rows.push(['Source',   fire.source]);
+    rows.push(['Coords',   fire.lat.toFixed(3) + '°, ' + fire.lon.toFixed(3) + '°']);
+
     L.marker([fire.lat, fire.lon], {icon})
-      .bindTooltip(fire.name + '\n' + acresTxt, {permanent: false})
-      .on('click', () => showInspector({
-        title: '🔥 ' + fire.name,
-        rows: [
-          ['Size',      acresTxt],
-          ['Updated',   fire.date ? new Date(fire.date).toLocaleString() : '—'],
-          ['Source',     fire.source],
-          ['Lat/Lon',   fire.lat.toFixed(3) + ', ' + fire.lon.toFixed(3)],
-        ]
-      }))
+      .bindTooltip(fire.name + '\n' + acresTxt + ' · ' + distTxt, {permanent: false})
+      .on('click', () => showInspector({ title: '🔥 ' + fire.name, rows }))
       .addTo(layers.fire);
 
     if (isLarge) {
-      addAlert('danger', '🔥 LARGE FIRE: ' + fire.name + ' — ' + acresTxt);
+      addAlert('danger', '🔥 LARGE FIRE: ' + fire.name + ' — ' + acresTxt + ' (' + distTxt + ')');
     } else {
       addAlert('warn', '🔥 Active fire: ' + fire.name);
     }
 
     listHtml.push('<div class="alert-badge ' + (isLarge ? 'danger' : 'warn') + '">🔥 ' +
-      fire.name + (fire.acres ? ' — ' + acresTxt : '') + '</div>');
+      fire.name + (fire.acres ? ' — ' + acresTxt : '') +
+      ' <span style="opacity:.7;font-size:9px;">' + distTxt + '</span></div>');
   });
 
   document.getElementById('cnt-fire').textContent = fireCount + ' active';
@@ -1704,6 +1766,14 @@ function initGOES() {
   layers.goes = L.tileLayer(
     'https://cdn.star.nesdis.noaa.gov/GOES18/ABI/CONUS/GEOCOLOR/{z}/{x}/{y}.jpg',
     { attribution:'NOAA GOES-West GeoColor', opacity:0.55, maxZoom:5, minZoom:3 }
+  );
+}
+
+function initNEXRAD() {
+  // Iowa Environmental Mesonet NEXRAD radar tiles (free, no key)
+  layers.nexrad = L.tileLayer(
+    'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png',
+    { attribution:'IEM NEXRAD', opacity:0.5, maxZoom:12, minZoom:3, transparent:true }
   );
 }
 
@@ -1756,6 +1826,7 @@ function toggleLayer(name) {
   playSound(on ? 'toggleOn' : 'toggleOff');
   if (name === 'traffic') { on ? loadGoogleTraffic() : (layers.traffic?.remove()); return; }
   if (name === 'goes')    { on ? layers.goes?.addTo(map) : layers.goes?.remove(); return; }
+  if (name === 'nexrad')  { on ? layers.nexrad?.addTo(map) : layers.nexrad?.remove(); return; }
   if (layers[name]) { on ? layers[name].addTo(map) : layers[name].remove(); }
 }
 
@@ -1795,7 +1866,12 @@ function addTickerItem(cls, text) {
 // ══════════════════════════════════════════════════
 //  AI ANALYST — OpenRouter free model (or OpenAI fallback)
 // ══════════════════════════════════════════════════
-const OR_MODEL = 'meta-llama/llama-3.3-70b-instruct:free'; // reliable free model
+const OR_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+const OR_FALLBACKS = [
+  'google/gemma-4-31b-it:free',
+  'qwen/qwen3-next-80b-a3b-instruct:free',
+  'nvidia/nemotron-3-super-120b-a12b:free'
+];
 
 function cleanVal(v) { return (!v || v === '—' || v === 'NaN' || v === 'undefined') ? 'data unavailable' : v; }
 
@@ -1862,7 +1938,16 @@ async function generateAISummary() {
         ]
       })
     });
-    if (!r.ok) { const e=await r.json().catch(()=>({})); openModal('AI ERROR', (e.error?.message||'Status '+r.status)); return; }
+    if (!r.ok) {
+      const errBody = await r.text().catch(() => '');
+      let errMsg = 'Status ' + r.status;
+      try {
+        const errJson = JSON.parse(errBody);
+        errMsg = errJson.error?.message || errJson.message || errMsg;
+      } catch(pe) { errMsg += '\n' + errBody.substring(0, 200); }
+      openModal('AI ERROR', 'Provider returned error:\n\n' + errMsg + '\n\nTip: Make sure your OpenRouter key is valid at openrouter.ai/settings/keys');
+      return;
+    }
     const d = await r.json();
     let content = d.choices?.[0]?.message?.content || 'No response generated.';
     // Clean up any reasoning artifacts the model might leak
@@ -1949,9 +2034,20 @@ function hideInspector() {
 // ══════════════════════════════════════════════════
 //  MODAL
 // ══════════════════════════════════════════════════
-function openModal(title, body) {
+function openModal(title, body, isHtml) {
   document.getElementById('modal-title').textContent = title;
-  document.getElementById('modal-body').textContent  = body;
+  const el = document.getElementById('modal-body');
+  if (isHtml || body.indexOf('<div') !== -1 || body.indexOf('<input') !== -1) {
+    el.innerHTML = body;
+  } else {
+    // For plain text (AI briefs), render with line breaks preserved
+    el.innerHTML = '';
+    const pre = document.createElement('div');
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.style.lineHeight = '1.7';
+    pre.textContent = body;
+    el.appendChild(pre);
+  }
   document.getElementById('modal').classList.add('open');
 }
 function closeModal() { document.getElementById('modal').classList.remove('open'); }
@@ -2371,6 +2467,7 @@ window.addEventListener('load', async () => {
   initMap();
   initSidebar();
   initGOES();
+  initNEXRAD();
   initCamMarkers();
   loadKeyFields();
   startClock();
