@@ -725,6 +725,11 @@ body {
       <div class="layer-count" id="cnt-quake">—</div>
     </div>
     <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-faults" checked onchange="toggleLayer('faults')"><span class="tslider"></span></label>
+      <label for="tog-faults">🔶 Fault Lines (USGS Quaternary)</label>
+      <div class="layer-count" id="cnt-faults">—</div>
+    </div>
+    <div class="layer-row">
       <label class="toggle"><input type="checkbox" id="tog-fire" checked onchange="toggleLayer('fire')"><span class="tslider"></span></label>
       <label for="tog-fire">🔥 Active Fires (NASA)</label>
       <div class="layer-count" id="cnt-fire">—</div>
@@ -816,7 +821,8 @@ body {
       <input id="k-oai" type="text" placeholder="sk-...">
     </div>
     <button class="btn primary" onclick="saveKeys()">💾 SAVE ALL KEYS</button>
-    <div class="info-box">Keys never leave your browser except to authenticate directly with each service API. 11 of 13 data streams require no key at all.</div>
+    <button class="btn" onclick="testAIConnection()" style="margin-top:4px;">🔌 TEST AI CONNECTION</button>
+    <div id="key-status" class="info-box">Keys never leave your browser except to authenticate directly with each service API. 12 of 14 data streams require no key at all.</div>
 
     <div class="section-lbl">DATA REFRESH RATES</div>
     <div class="info-box">
@@ -905,8 +911,10 @@ let layers = {
   sats:    null,
   tracks:  null,
   quake:   null,
+  faults:  null,
   fire:    null,
   goes:    null,
+  nexrad:  null,
   traffic: null,
   water:   null,
   mineral: null,
@@ -2069,6 +2077,17 @@ function loadKeyFields() {
   document.getElementById('k-goo').value = K.goo;
   document.getElementById('k-oai').value = K.oai;
   document.getElementById('k-orr').value = K.orr;
+  updateKeyStatus();
+}
+
+function updateKeyStatus() {
+  const el = document.getElementById('key-status');
+  const parts = [];
+  if (K.orr) parts.push('✅ OpenRouter key loaded (' + K.orr.substring(0,8) + '...)');
+  else parts.push('❌ No OpenRouter key — AI features disabled');
+  if (K.oai) parts.push('✅ OpenAI key loaded');
+  if (K.goo) parts.push('✅ Google Maps key loaded');
+  el.innerHTML = parts.join('<br>');
 }
 
 function saveKeys() {
@@ -2078,7 +2097,63 @@ function saveKeys() {
   localStorage.setItem('slv_goo', K.goo);
   localStorage.setItem('slv_oai', K.oai);
   localStorage.setItem('slv_orr', K.orr);
+  updateKeyStatus();
   alert('Keys saved.');
+}
+
+async function testAIConnection() {
+  const status = document.getElementById('key-status');
+
+  if (!K.orr && !K.oai) {
+    status.innerHTML = '❌ No API key found. Enter an OpenRouter key above and click SAVE first.<br><br>' +
+      'How to get a free key:<br>1. Go to <b>openrouter.ai</b><br>2. Sign up (no credit card needed)<br>' +
+      '3. Go to Settings → Keys<br>4. Create a key<br>5. Paste it above and click SAVE';
+    return;
+  }
+
+  const useOR = !!K.orr;
+  const provider = useOR ? 'OpenRouter' : 'OpenAI';
+  const model = useOR ? OR_MODEL : 'gpt-4o-mini';
+  status.innerHTML = '⏳ Testing ' + provider + ' connection with model: ' + model + '...';
+
+  try {
+    const apiUrl = useOR ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+    const hdrs = { 'Authorization': 'Bearer ' + (useOR ? K.orr : K.oai), 'Content-Type': 'application/json' };
+    if (useOR) { hdrs['HTTP-Referer'] = window.location.href; hdrs['X-Title'] = 'Eagle Eyes SLV'; }
+
+    const r = await fetch(apiUrl, {
+      method: 'POST', headers: hdrs,
+      body: JSON.stringify({
+        model: model,
+        max_tokens: 50,
+        messages: [{ role: 'user', content: 'Say "Eagle Eyes connection successful" in exactly those words.' }]
+      })
+    });
+
+    if (!r.ok) {
+      const errTxt = await r.text().catch(() => '');
+      let errMsg = 'Status ' + r.status;
+      try { const ej = JSON.parse(errTxt); errMsg = ej.error?.message || ej.message || errMsg; } catch(e) {}
+
+      status.innerHTML = '❌ <b>' + provider + ' returned error ' + r.status + ':</b><br>' + errMsg +
+        '<br><br>Key being used: ' + (useOR ? K.orr.substring(0,12) : K.oai.substring(0,12)) + '...' +
+        (r.status === 401 ? '<br><br>⚠️ This means your key is invalid or expired. Generate a new one at openrouter.ai/settings/keys' : '') +
+        (r.status === 402 ? '<br><br>⚠️ This means you need credits. Free models should not require credits — try regenerating your key.' : '') +
+        (r.status === 429 ? '<br><br>⚠️ Rate limited. Wait a minute and try again.' : '');
+      return;
+    }
+
+    const d = await r.json();
+    const reply = d.choices?.[0]?.message?.content || 'No response';
+    const usedModel = d.model || model;
+    status.innerHTML = '✅ <b>Connection successful!</b><br>Provider: ' + provider +
+      '<br>Model: ' + usedModel + '<br>Response: ' + reply +
+      '<br><br>The AI Brief and Chat buttons on the OSINT tab should now work.';
+
+  } catch(e) {
+    status.innerHTML = '❌ <b>Network error:</b> ' + e.message +
+      '<br><br>This could mean a CORS issue or no internet connection.';
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -2345,6 +2420,68 @@ async function fetchMinerals() {
 }
 
 // ══════════════════════════════════════════════════
+//  FAULT LINES — USGS Quaternary Faults (ArcGIS, no key)
+// ══════════════════════════════════════════════════
+async function fetchFaults() {
+  const url = 'https://services.arcgis.com/jIL9msH9OI208GCb/arcgis/rest/services/Active_Faults/FeatureServer/0/query' +
+    '?where=1%3D1&geometry=-108,36,-104,39.5&geometryType=esriGeometryEnvelope' +
+    '&spatialRel=esriSpatialRelIntersects&outFields=name,slip_type,catalog_na' +
+    '&returnGeometry=true&f=geojson&resultRecordCount=200';
+
+  try {
+    const r = await fetch(url);
+    if (!r.ok) { console.error('[Faults] Status:', r.status); return; }
+    const geojson = await r.json();
+    const feats = geojson.features || [];
+    console.log('[Faults] Found:', feats.length, 'fault lines');
+
+    layers.faults.clearLayers();
+
+    const slipColors = {
+      'Normal': '#ff6633',
+      'Sinistral': '#ff9933',
+      'Dextral': '#ffcc33',
+      'Reverse': '#cc3333',
+      'Thrust': '#cc3333'
+    };
+
+    feats.forEach(f => {
+      const props = f.properties || {};
+      const name = props.name || 'Unnamed fault';
+      const slip = props.slip_type || 'Unknown';
+      const color = slipColors[slip] || '#ff8844';
+
+      const layer = L.geoJSON(f, {
+        style: {
+          color: color,
+          weight: 2.5,
+          opacity: 0.7,
+          dashArray: '6,4'
+        }
+      });
+
+      layer.bindTooltip(name, { permanent: false, direction: 'top', sticky: true });
+      layer.on('click', () => showInspector({
+        title: '🔶 ' + name,
+        rows: [
+          ['Slip Type',  slip],
+          ['Source',      props.catalog_na || 'USGS Hazfaults'],
+          ['Data',       'USGS Quaternary Fault & Fold Database'],
+        ]
+      }));
+
+      layers.faults.addLayer(layer);
+    });
+
+    document.getElementById('cnt-faults').textContent = feats.length + ' faults';
+
+  } catch(e) {
+    console.error('[Faults] Error:', e);
+    document.getElementById('cnt-faults').textContent = 'error';
+  }
+}
+
+// ══════════════════════════════════════════════════
 //  UFO SIGHTINGS — NUFORC/CORGIS (embedded static data)
 // ══════════════════════════════════════════════════
 const UFO_DATA = UFOJSON; // populated below
@@ -2510,6 +2647,9 @@ window.addEventListener('load', async () => {
 
   setLoadMsg('Loading mineral deposits…');
   await fetchMinerals();
+
+  setLoadMsg('Loading fault lines…');
+  await fetchFaults();
 
   setLoadMsg('Loading UFO sightings…');
   loadUFOSightings();
