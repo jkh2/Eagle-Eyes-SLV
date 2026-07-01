@@ -784,16 +784,17 @@ body {
   <!-- CAMS TAB -->
   <div class="tab-content">
     <div class="section-lbl">CDOT TRAFFIC CAMERAS — SLV REGION</div>
-    <div class="info-box">CDOT is upgrading their camera system statewide (2026). Live camera feeds are available through COtrip.org. Click below to view cameras near the SLV.</div>
+    <div class="info-box">12 camera locations mapped across SLV highway corridors. Click any camera below or any 📷 marker on the map to open the live CDOT feed on COtrip.org.</div>
 
-    <div id="cam-grid" style="display:flex;flex-direction:column;gap:8px;">
+    <div id="cam-grid" style="display:flex;flex-direction:column;gap:4px;">
     </div>
 
-    <button class="btn primary" onclick="window.open('https://www.cotrip.org/map#/camera?lat=37.5&lng=-105.9&z=9','_blank')">📷 OPEN COTRIP LIVE CAMERAS</button>
+    <div class="section-lbl" style="margin-top:8px;">FULL CAMERA MAP</div>
+    <button class="btn primary" onclick="window.open('https://www.cotrip.org/map#/camera?lat=37.5&lng=-105.9&z=9','_blank')">📷 OPEN COTRIP SLV CAMERA MAP</button>
 
-    <div class="section-lbl" style="margin-top:8px;">EXTERNAL WEBCAMS</div>
-    <button class="btn" onclick="window.open('https://www.cotrip.org/map#/camera?lat=37.5&lng=-105.9&z=9','_blank')">📷 COtrip SLV Region Cameras</button>
-    <button class="btn" onclick="window.open('https://www.windy.com/-Webcams/United-States-of-America/Colorado/La-Veta/webcams/1648822318?37.593,-105.204,9','_blank')">📷 Windy — La Veta Pass Webcam</button>
+    <div class="section-lbl" style="margin-top:8px;">OTHER WEBCAM SOURCES</div>
+    <button class="btn" onclick="window.open('https://www.cotrip.org/map#/camera?lat=37.5&lng=-105.9&z=9','_blank')">📷 COtrip — All SLV Cameras</button>
+    <button class="btn" onclick="window.open('https://www.windy.com/-Webcams/United-States-of-America/Colorado/La-Veta/webcams/1648822318?37.593,-105.204,9','_blank')">📷 Windy — La Veta Pass</button>
     <button class="btn" onclick="window.open('https://wolfcreekski.com/webcams/','_blank')">📷 Wolf Creek Ski Area Cams</button>
     <button class="btn" onclick="window.open('https://www.coloradowebcam.net/webcamtypes/traffic-webcams','_blank')">📷 ColoradoWebCam.net</button>
   </div>
@@ -2381,36 +2382,45 @@ function loadUFOSightings() {
 }
 
 // ══════════════════════════════════════════════════
-//  CDOT WEBCAMS — COtrip links (camera images transitioning 2025-2026)
+//  CDOT WEBCAMS — markers link to COtrip live views
 // ══════════════════════════════════════════════════
 const CDOT_CAMS = [
-  { id:'antonito',    name:'Antonito — Hwys 285 & 17',      lat:37.0742, lon:-105.6579 },
-  { id:'laveta',      name:'La Veta Pass — US 160',          lat:37.5029, lon:-105.2179 },
-  { id:'wolfcreek',   name:'Wolf Creek Pass — US 160',       lat:37.4866, lon:-106.7952 },
-  { id:'center',      name:'Center — CO-112',                lat:37.7536, lon:-106.1091 },
-  { id:'poncha',      name:'Poncha Pass — US 285',           lat:38.4184, lon:-106.0657 },
-  { id:'villagrove',  name:'Villa Grove — US 285',           lat:38.2541, lon:-105.9677 },
-  { id:'southfork',   name:'South Fork — US 160',            lat:37.6716, lon:-106.6397 },
-  { id:'border159',   name:'CO/NM Border — Hwy 159',         lat:36.9945, lon:-105.7233 },
+  { name:'Antonito — Hwy 285/17',       lat:37.0742, lon:-105.6579, route:'US 285' },
+  { name:'La Veta Pass — US 160',        lat:37.5029, lon:-105.2179, route:'US 160' },
+  { name:'Wolf Creek Pass East — US 160', lat:37.4866, lon:-106.7952, route:'US 160' },
+  { name:'Wolf Creek Pass West — US 160', lat:37.4710, lon:-106.8400, route:'US 160' },
+  { name:'Center — CO 112',              lat:37.7536, lon:-106.1091, route:'CO 112' },
+  { name:'Poncha Pass — US 285',         lat:38.4184, lon:-106.0657, route:'US 285' },
+  { name:'Villa Grove — US 285',         lat:38.2541, lon:-105.9677, route:'US 285' },
+  { name:'South Fork — US 160',          lat:37.6716, lon:-106.6397, route:'US 160' },
+  { name:'CO/NM Border — Hwy 159',      lat:36.9945, lon:-105.7233, route:'CO 159' },
+  { name:'Cumbres Pass — CO 17',         lat:36.9940, lon:-106.4480, route:'CO 17' },
+  { name:'North Pass/Cochetopa — CO 114',lat:38.1380, lon:-106.5920, route:'CO 114' },
+  { name:'Monte Vista — US 160',         lat:37.5792, lon:-106.1484, route:'US 160' },
 ];
 
 function initCamMarkers() {
   CDOT_CAMS.forEach(cam => {
     const icon = L.divIcon({
       className:'',
-      html:'<div style="font-size:16px;filter:drop-shadow(0 0 4px rgba(204,170,34,.7))">📷</div>',
+      html:'<div style="font-size:16px;filter:drop-shadow(0 0 4px rgba(204,170,34,.7));cursor:pointer;">📷</div>',
       iconSize:[20,20], iconAnchor:[10,10]
     });
     L.marker([cam.lat, cam.lon], {icon})
       .bindTooltip(cam.name, {permanent:false, direction:'top'})
-      .on('click', () => showInspector({
-        title: '📷 ' + cam.name,
-        rows: [
-          ['Location', cam.name],
-          ['Lat/Lon', cam.lat.toFixed(4) + '°, ' + cam.lon.toFixed(4) + '°'],
-          ['Status', 'View on COtrip.org'],
-        ]
-      }))
+      .on('click', () => {
+        playSound('inspect');
+        showInspector({
+          title: '📷 ' + cam.name,
+          rows: [
+            ['Route',    cam.route],
+            ['Lat/Lon',  cam.lat.toFixed(4) + '°, ' + cam.lon.toFixed(4) + '°'],
+            ['Status',   'Click VIEW CAMERA below'],
+          ]
+        });
+        // Open COtrip map centered on camera location
+        window.open('https://www.cotrip.org/map#/camera?lat=' + cam.lat + '&lng=' + cam.lon + '&z=14', '_blank');
+      })
       .addTo(map);
   });
 }
@@ -2418,9 +2428,9 @@ function initCamMarkers() {
 function renderCamGrid() {
   const grid = document.getElementById('cam-grid');
   grid.innerHTML = CDOT_CAMS.map(cam =>
-    '<div class="data-card" style="padding:6px;">' +
-    '<div class="card-title">' + cam.name + '</div>' +
-    '<div class="card-detail" style="font-size:9px;color:var(--muted);">View on COtrip.org</div>' +
+    '<div class="data-card" style="padding:8px;cursor:pointer;" onclick="window.open(\'https://www.cotrip.org/map#/camera?lat=' + cam.lat + '&lng=' + cam.lon + '&z=14\',\'_blank\')">' +
+    '<div class="card-title">📷 ' + cam.name + '</div>' +
+    '<div class="card-detail" style="font-size:9px;color:var(--muted);">' + cam.route + ' · Click to view on COtrip</div>' +
     '</div>'
   ).join('');
 }
