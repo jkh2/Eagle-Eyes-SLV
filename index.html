@@ -1936,33 +1936,57 @@ async function generateAISummary() {
     const hdrs = { 'Authorization': 'Bearer ' + (useOpenRouter ? K.orr : K.oai), 'Content-Type': 'application/json' };
     if (useOpenRouter) { hdrs['HTTP-Referer'] = window.location.href; hdrs['X-Title'] = 'Eagle Eyes SLV'; }
 
-    const r = await fetch(apiUrl, { method:'POST', headers: hdrs,
-      body: JSON.stringify({
-        model: useOpenRouter ? OR_MODEL : 'gpt-4o-mini',
-        max_tokens: 800,
-        temperature: 0.4,
-        messages: [
-          { role: 'system', content: systemMsg },
-          { role: 'user', content: userMsg }
-        ]
-      })
-    });
-    if (!r.ok) {
-      const errBody = await r.text().catch(() => '');
-      let errMsg = 'Status ' + r.status;
+    // Try primary model, then fallbacks if it fails
+    const models = useOpenRouter ? [OR_MODEL, ...OR_FALLBACKS] : ['gpt-4o-mini'];
+    let lastErr = '';
+
+    for (const model of models) {
       try {
-        const errJson = JSON.parse(errBody);
-        errMsg = errJson.error?.message || errJson.message || errMsg;
-      } catch(pe) { errMsg += '\n' + errBody.substring(0, 200); }
-      openModal('AI ERROR', 'Provider returned error:\n\n' + errMsg + '\n\nTip: Make sure your OpenRouter key is valid at openrouter.ai/settings/keys');
-      return;
+        console.log('[AI] Trying model:', model);
+        const r = await fetch(apiUrl, { method:'POST', headers: hdrs,
+          body: JSON.stringify({
+            model: model,
+            max_tokens: 800,
+            temperature: 0.4,
+            messages: [
+              { role: 'system', content: systemMsg },
+              { role: 'user', content: userMsg }
+            ]
+          })
+        });
+
+        if (r.status === 429) {
+          lastErr = 'Rate limited on ' + model + '. ';
+          console.warn('[AI] 429 on', model, '- trying next...');
+          await new Promise(res => setTimeout(res, 2000)); // wait 2s before trying next
+          continue;
+        }
+
+        if (!r.ok) {
+          const errBody = await r.text().catch(() => '');
+          try { const ej = JSON.parse(errBody); lastErr = ej.error?.message || 'Status ' + r.status; }
+          catch(pe) { lastErr = 'Status ' + r.status; }
+          console.warn('[AI] Error on', model, ':', lastErr, '- trying next...');
+          continue;
+        }
+
+        const d = await r.json();
+        let content = d.choices?.[0]?.message?.content || 'No response generated.';
+        content = content.replace(/^(Sentence \d+:|Let me|I'll|Here's|Sure|Okay|Let's|We need)[^\n]*\n*/gim, '').trim();
+        const usedModel = d.model || model;
+        openModal('SA BRIEF — ' + new Date().toLocaleString(), content + '\n\n— Model: ' + usedModel);
+        return; // success - exit
+      } catch(fetchErr) {
+        lastErr = fetchErr.message;
+        console.warn('[AI] Fetch error on', model, ':', lastErr);
+        continue;
+      }
     }
-    const d = await r.json();
-    let content = d.choices?.[0]?.message?.content || 'No response generated.';
-    // Clean up any reasoning artifacts the model might leak
-    content = content.replace(/^(Sentence \d+:|Let me|I'll|Here's|Sure|Okay|Let's|We need)[^\n]*\n*/gim, '').trim();
-    const model = d.model || (useOpenRouter ? OR_MODEL : 'gpt-4o-mini');
-    openModal('SA BRIEF — ' + new Date().toLocaleString(), content + '\n\n— Model: ' + model);
+
+    // All models failed
+    openModal('AI ERROR', 'All models failed.\n\nLast error: ' + lastErr +
+      '\n\nThis usually means rate limiting. The free tier allows 200 requests per day. ' +
+      'Wait a few minutes and try again, or check your key at openrouter.ai/settings/keys');
   } catch(e) {
     openModal('AI ERROR', 'Failed to reach AI provider.\n' + e.message);
   }
@@ -2002,23 +2026,51 @@ async function sendAIChat() {
   const hdrs = { 'Authorization': 'Bearer ' + (useOR ? K.orr : K.oai), 'Content-Type': 'application/json' };
   if (useOR) { hdrs['HTTP-Referer'] = window.location.href; hdrs['X-Title'] = 'Eagle Eyes SLV'; }
 
-  try {
-    const r = await fetch(useOR ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions', {
-      method:'POST', headers: hdrs,
-      body: JSON.stringify({ model: useOR ? OR_MODEL : 'gpt-4o-mini', max_tokens:600,
-        messages: [
-          {role:'system', content:'You are an intelligence analyst for Eagle Eyes SLV, a geospatial dashboard monitoring the San Luis Valley, Colorado. Answer questions using the live dashboard data provided. Be concise, factual, and actionable. Prioritize safety. Do not show your reasoning process — output only your answer.'},
-          {role:'user', content: ctx + '\n\nQuestion: ' + q}
-        ]
-      })
-    });
-    document.getElementById('ai-typing')?.remove();
-    if (!r.ok) { log.innerHTML += '<div style="color:var(--danger);">Error: Status ' + r.status + '</div>'; return; }
-    const d = await r.json();
-    const ans = d.choices?.[0]?.message?.content || 'No response.';
-    log.innerHTML += '<div style="color:var(--accent2);margin-top:4px;"><b>🦅:</b> ' + ans.replace(/\n/g,'<br>') + '</div>';
-    log.scrollTop = log.scrollHeight;
-  } catch(e) { document.getElementById('ai-typing')?.remove(); log.innerHTML += '<div style="color:var(--danger);">Error: ' + e.message + '</div>'; }
+  const models = useOR ? [OR_MODEL, ...OR_FALLBACKS] : ['gpt-4o-mini'];
+  const apiUrl = useOR ? 'https://openrouter.ai/api/v1/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+  const sysMsg = 'You are an intelligence analyst for Eagle Eyes SLV, a geospatial dashboard monitoring the San Luis Valley, Colorado. Answer questions using the live dashboard data provided. Be concise, factual, and actionable. Prioritize safety. Do not show your reasoning process — output only your answer.';
+
+  for (const model of models) {
+    try {
+      console.log('[AI Chat] Trying:', model);
+      const r = await fetch(apiUrl, {
+        method:'POST', headers: hdrs,
+        body: JSON.stringify({ model: model, max_tokens:600,
+          messages: [
+            {role:'system', content: sysMsg},
+            {role:'user', content: ctx + '\n\nQuestion: ' + q}
+          ]
+        })
+      });
+
+      if (r.status === 429) {
+        console.warn('[AI Chat] 429 on', model);
+        await new Promise(res => setTimeout(res, 2000));
+        continue;
+      }
+
+      document.getElementById('ai-typing')?.remove();
+
+      if (!r.ok) {
+        const errTxt = await r.text().catch(() => '');
+        console.warn('[AI Chat] Error on', model, ':', r.status, errTxt.substring(0, 100));
+        continue;
+      }
+
+      const d = await r.json();
+      const ans = d.choices?.[0]?.message?.content || 'No response.';
+      log.innerHTML += '<div style="color:var(--accent2);margin-top:4px;"><b>🦅:</b> ' + ans.replace(/\n/g,'<br>') + '</div>';
+      log.scrollTop = log.scrollHeight;
+      return; // success
+    } catch(e) {
+      console.warn('[AI Chat] Fetch error on', model, ':', e.message);
+      continue;
+    }
+  }
+
+  // All models failed
+  document.getElementById('ai-typing')?.remove();
+  log.innerHTML += '<div style="color:var(--danger);">All AI models returned errors. This usually means rate limiting — wait a few minutes and try again.</div>';
 }
 
 // ══════════════════════════════════════════════════
