@@ -731,8 +731,12 @@ body {
     </div>
     <div class="layer-row">
       <label class="toggle"><input type="checkbox" id="tog-fire" checked onchange="toggleLayer('fire')"><span class="tslider"></span></label>
-      <label for="tog-fire">🔥 Active Fires (NASA)</label>
+      <label for="tog-fire">🔥 Active Fires (EONET + NIFC)</label>
       <div class="layer-count" id="cnt-fire">—</div>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-hotspots" onchange="toggleLayer('hotspots')"><span class="tslider"></span></label>
+      <label for="tog-hotspots">🛰 Fire Hotspots (NASA VIIRS satellite)</label>
     </div>
     <div class="layer-row">
       <label class="toggle"><input type="checkbox" id="tog-water" checked onchange="toggleLayer('water')"><span class="tslider"></span></label>
@@ -782,6 +786,8 @@ body {
     <button class="btn" onclick="window.open('https://fires.cornea.is/state/colorado','_blank')">🔥 CO Wildfire Explorer</button>
     <button class="btn" onclick="window.open('https://www.cotrip.org/map','_blank')">📷 COtrip Live Map & Cameras</button>
     <button class="btn" onclick="window.open('https://earthquake.usgs.gov/earthquakes/map/?extent=35,-108&extent=40,-103','_blank')">🔴 USGS Earthquake Map</button>
+    <button class="btn" onclick="window.open('https://poweroutage.us/area/state/colorado','_blank')">⚡ Power Outage Map — Colorado</button>
+    <button class="btn" onclick="window.open('https://app.watchduty.org/','_blank')">🔥 Watch Duty — Wildfire Intel</button>
     <button class="btn" onclick="window.open('https://www.swpc.noaa.gov/','_blank')">☀ NOAA Space Weather</button>
     <button class="btn" onclick="window.open('https://celestrak.org/cesium/orbit-viz.php','_blank')">🛰 Celestrak Orbit Viz</button>
   </div>
@@ -1786,6 +1792,22 @@ function initNEXRAD() {
   );
 }
 
+function initHotspots() {
+  // NASA GIBS VIIRS fire thermal hotspots (free, no key, CORS enabled)
+  const today = new Date().toISOString().split('T')[0];
+  layers.hotspots = L.tileLayer.wms(
+    'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi', {
+      layers: 'VIIRS_SNPP_Thermal_Anomalies_375m_All',
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.8,
+      version: '1.1.1',
+      time: today,
+      attribution: 'NASA VIIRS'
+    }
+  );
+}
+
 // ══════════════════════════════════════════════════
 //  GOOGLE TRAFFIC (needs Maps JS API key)
 // ══════════════════════════════════════════════════
@@ -1833,9 +1855,10 @@ function activateTrafficLayer() {
 function toggleLayer(name) {
   const on = document.getElementById('tog-'+name)?.checked;
   playSound(on ? 'toggleOn' : 'toggleOff');
-  if (name === 'traffic') { on ? loadGoogleTraffic() : (layers.traffic?.remove()); return; }
-  if (name === 'goes')    { on ? layers.goes?.addTo(map) : layers.goes?.remove(); return; }
-  if (name === 'nexrad')  { on ? layers.nexrad?.addTo(map) : layers.nexrad?.remove(); return; }
+  if (name === 'traffic')  { on ? loadGoogleTraffic() : (layers.traffic?.remove()); return; }
+  if (name === 'goes')     { on ? layers.goes?.addTo(map) : layers.goes?.remove(); return; }
+  if (name === 'nexrad')   { on ? layers.nexrad?.addTo(map) : layers.nexrad?.remove(); return; }
+  if (name === 'hotspots') { on ? layers.hotspots?.addTo(map) : layers.hotspots?.remove(); return; }
   if (layers[name]) { on ? layers[name].addTo(map) : layers[name].remove(); }
 }
 
@@ -2667,6 +2690,7 @@ window.addEventListener('load', async () => {
   initSidebar();
   initGOES();
   initNEXRAD();
+  initHotspots();
   initCamMarkers();
   loadKeyFields();
   startClock();
