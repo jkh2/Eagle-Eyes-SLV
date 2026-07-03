@@ -736,7 +736,11 @@ body {
     </div>
     <div class="layer-row">
       <label class="toggle"><input type="checkbox" id="tog-hotspots" onchange="toggleLayer('hotspots')"><span class="tslider"></span></label>
-      <label for="tog-hotspots">🛰 Fire Hotspots (NASA VIIRS satellite)</label>
+      <label for="tog-hotspots">🛰 Fire Hotspots (NASA VIIRS — yesterday)</label>
+    </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-goesfire" onchange="toggleLayer('goesfire')"><span class="tslider"></span></label>
+      <label for="tog-goesfire">🔴 Fire Temp (GOES-West — near real-time)</label>
     </div>
     <div class="layer-row">
       <label class="toggle"><input type="checkbox" id="tog-water" checked onchange="toggleLayer('water')"><span class="tslider"></span></label>
@@ -917,10 +921,11 @@ let layers = {
   sats:    null,
   tracks:  null,
   quake:   null,
-  faults:  null,
-  fire:    null,
-  goes:    null,
-  nexrad:  null,
+  faults:   null,
+  fire:     null,
+  goes:     null,
+  goesfire: null,
+  nexrad:   null,
   traffic: null,
   water:   null,
   mineral: null,
@@ -1793,17 +1798,34 @@ function initNEXRAD() {
 }
 
 function initHotspots() {
-  // NASA GIBS VIIRS fire thermal hotspots (free, no key, CORS enabled)
-  const today = new Date().toISOString().split('T')[0];
+  // NASA GIBS — combine all 3 VIIRS satellites for max coverage + GOES-West FireTemp
+  // TIME parameter must be set dynamically; Leaflet WMS handles it via params option
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
   layers.hotspots = L.tileLayer.wms(
     'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi', {
-      layers: 'VIIRS_SNPP_Thermal_Anomalies_375m_All',
+      layers: 'VIIRS_SNPP_Thermal_Anomalies_375m_All,VIIRS_NOAA20_Thermal_Anomalies_375m_All,VIIRS_NOAA21_Thermal_Anomalies_375m_All',
       format: 'image/png',
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.85,
       version: '1.1.1',
-      time: today,
-      attribution: 'NASA VIIRS'
+      uppercase: true,
+      attribution: 'NASA VIIRS Fire Hotspots',
+      // Pass TIME as extra param — Leaflet appends this to each tile request
+      TIME: yesterday
+    }
+  );
+
+  // GOES-West Fire Temperature — near real-time, no TIME param needed
+  layers.goesfire = L.tileLayer.wms(
+    'https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi', {
+      layers: 'GOES-West_ABI_FireTemp',
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.7,
+      version: '1.1.1',
+      uppercase: true,
+      attribution: 'GOES-West Fire Temp'
     }
   );
 }
@@ -1857,6 +1879,7 @@ function toggleLayer(name) {
   playSound(on ? 'toggleOn' : 'toggleOff');
   if (name === 'traffic')  { on ? loadGoogleTraffic() : (layers.traffic?.remove()); return; }
   if (name === 'goes')     { on ? layers.goes?.addTo(map) : layers.goes?.remove(); return; }
+  if (name === 'goesfire') { on ? layers.goesfire?.addTo(map) : layers.goesfire?.remove(); return; }
   if (name === 'nexrad')   { on ? layers.nexrad?.addTo(map) : layers.nexrad?.remove(); return; }
   if (name === 'hotspots') { on ? layers.hotspots?.addTo(map) : layers.hotspots?.remove(); return; }
   if (layers[name]) { on ? layers[name].addTo(map) : layers[name].remove(); }
