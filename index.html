@@ -718,6 +718,19 @@ body {
 
   <!-- GROUND TAB -->
   <div class="tab-content">
+    <div class="section-lbl">HOME RADIUS FILTER</div>
+    <div class="info-box">
+      Applies to quakes, fires &amp; UFO sightings below.<br>
+      <select id="home-radius-select" onchange="setHomeRadius(this.value)"
+        style="width:100%;margin-top:6px;background:var(--panel2);color:var(--text);border:1px solid var(--border2);border-radius:4px;padding:4px;">
+        <option value="50">Within 50 mi</option>
+        <option value="100" selected>Within 100 mi</option>
+        <option value="250">Within 250 mi</option>
+        <option value="all">Show all (no filter)</option>
+      </select>
+      <div id="home-radius-label" style="margin-top:6px;font-size:9px;opacity:.7;">Within 100 mi of home</div>
+    </div>
+
     <div class="section-lbl">GROUND DOMAIN</div>
     <div class="layer-row">
       <label class="toggle"><input type="checkbox" id="tog-quake" checked onchange="toggleLayer('quake')"><span class="tslider"></span></label>
@@ -903,6 +916,11 @@ const UFOJSON = [{"c":"Canon City","s":"sphere","d":"Bright, round object flashe
 // ── CONFIG ─────────────────────────────────────────
 const SLV = { lat:37.5, lon:-105.9, zoom:9 };
 const BBOX = { minLat:37.0, maxLat:38.5, minLon:-106.5, maxLon:-105.0 };
+// HOME — Antonito, CO town-center coordinate (deliberately rounded to town-level
+// precision, not an exact address; the radius filter below only needs ~mile-scale
+// accuracy at its coarsest setting, so there's no reason to store anything finer).
+const HOME = { lat:37.0781, lon:-106.0028 };
+let homeRadiusMi = 100; // null = show all, no distance filtering
 // Alamosa NWS station
 const NWS_STATION   = 'KALS';
 const NWS_GRID_URL  = 'https://api.weather.gov/points/37.4694,-105.8700';
@@ -1563,7 +1581,12 @@ async function fetchEarthquakes() {
 
     layers.quake.clearLayers();
 
-    quakes.forEach(q => {
+    const inRange = quakes.filter(q => {
+      const [lon,lat] = q.geometry.coordinates;
+      return withinHomeRadius(lat, lon);
+    });
+
+    inRange.forEach(q => {
       const [lon,lat,depth] = q.geometry.coordinates;
       const mag   = q.properties.mag;
       const place = q.properties.place;
@@ -1597,10 +1620,12 @@ async function fetchEarthquakes() {
       if (mag >= 3) addAlert('warn', `🔴 M${mag} quake — ${place}`);
     });
 
-    document.getElementById('cnt-quake').textContent = `${quakes.length} events`;
+    document.getElementById('cnt-quake').textContent = homeRadiusMi == null
+      ? `${inRange.length} events`
+      : `${inRange.length} of ${quakes.length} events (within ${homeRadiusMi}mi)`;
 
-    // Sidebar list — top 5 by magnitude
-    const top5 = [...quakes].sort((a,b) => b.properties.mag-a.properties.mag).slice(0,5);
+    // Sidebar list — top 5 by magnitude, within radius
+    const top5 = [...inRange].sort((a,b) => b.properties.mag-a.properties.mag).slice(0,5);
     document.getElementById('quake-list').innerHTML = top5.map(q => {
       const m   = q.properties.mag;
       const cls = m >= 4 ? 'danger' : m >= 3 ? 'warn' : 'info';
@@ -1623,6 +1648,24 @@ function distMiles(lat1, lon1, lat2, lon2) {
   const dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
   const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Home-radius filter — applied to incident layers (quakes, fires, UFO sightings)
+// so the map defaults to "what's actually near home" instead of the full valley bbox.
+function withinHomeRadius(lat, lon) {
+  if (homeRadiusMi == null) return true;
+  return distMiles(HOME.lat, HOME.lon, lat, lon) <= homeRadiusMi;
+}
+
+function setHomeRadius(val) {
+  homeRadiusMi = (val === 'all') ? null : Number(val);
+  document.getElementById('home-radius-label').textContent =
+    homeRadiusMi == null ? 'Showing all (no radius filter)' : `Within ${homeRadiusMi} mi of home`;
+  // Re-render from live sources; each of these already fetches fresh + renders,
+  // so this both applies the new radius and refreshes the data.
+  fetchEarthquakes();
+  fetchFires();
+  loadUFOSightings();
 }
 
 async function fetchFires() {
@@ -1718,14 +1761,17 @@ async function fetchFires() {
   // Render all fires on map
   layers.fire.clearLayers();
   let fireCount = 0;
+  let fireTotal = 0;
   const listHtml = [];
 
   allFires.forEach(fire => {
+    fireTotal++;
+    if (!withinHomeRadius(fire.lat, fire.lon)) return;
     fireCount++;
     const acresTxt = fire.acres ? Math.round(fire.acres).toLocaleString() + ' acres' : 'size unknown';
     const isLarge = fire.acres && fire.acres > 1000;
-    const dist = distMiles(SLV.lat, SLV.lon, fire.lat, fire.lon);
-    const distTxt = Math.round(dist) + ' mi from SLV';
+    const dist = distMiles(HOME.lat, HOME.lon, fire.lat, fire.lon);
+    const distTxt = Math.round(dist) + ' mi from home';
     const pctTxt = fire.pct != null ? fire.pct + '% contained' : '—';
 
     const icon = L.divIcon({
@@ -1772,7 +1818,9 @@ async function fetchFires() {
       ' <span style="opacity:.7;font-size:9px;">' + distTxt + '</span></div>');
   });
 
-  document.getElementById('cnt-fire').textContent = fireCount + ' active';
+  document.getElementById('cnt-fire').textContent = homeRadiusMi == null
+    ? fireCount + ' active'
+    : `${fireCount} of ${fireTotal} active (within ${homeRadiusMi}mi)`;
   document.getElementById('fire-list').innerHTML = listHtml.length > 0 ?
     listHtml.join('') :
     '<div class="info-box" style="color:var(--accent2)">✓ No active fires in region.</div>';
@@ -2589,6 +2637,7 @@ function loadUFOSightings() {
   let count = 0;
 
   UFO_DATA.forEach(u => {
+    if (!withinHomeRadius(u.la, u.lo)) return;
     count++;
     const icon = L.divIcon({
       className:'',
@@ -2613,7 +2662,9 @@ function loadUFOSightings() {
     layers.ufo.addLayer(m);
   });
 
-  document.getElementById('cnt-ufo').textContent = `${count} sightings`;
+  document.getElementById('cnt-ufo').textContent = homeRadiusMi == null
+    ? `${count} sightings`
+    : `${count} of ${UFO_DATA.length} sightings (within ${homeRadiusMi}mi)`;
 }
 
 // ══════════════════════════════════════════════════
