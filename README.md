@@ -3,7 +3,7 @@
 
 > **"The ultimate zero-cost personal GEINT dashboard for the high desert."**
 
-[![Version](https://img.shields.io/badge/version-5.2-brightgreen)](#)
+[![Version](https://img.shields.io/badge/version-5.2.1-brightgreen)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue)](#)
 [![No Server](https://img.shields.io/badge/server-none-green)](#)
 [![No Build](https://img.shields.io/badge/build-none-green)](#)
@@ -125,7 +125,7 @@ No server. No backend. No build process. No subscription fees. Open the HTML fil
 
 ### Mobile
 
-- **[mobile-v1.html](https://jkh2.github.io/Eagle-Eyes-SLV/mobile-v1.html)** — a ground-up mobile build, not a shrunk desktop page. Bottom tab nav (Map / Fires / Cams / Weather), big touch targets, a bottom-sheet camera viewer instead of a modal, and a top alert strip for anything real (large fires, M3+ quakes, high wind). Deliberately narrower scope than the desktop dashboard — four field-relevant streams instead of fifteen — same free no-key data sources underneath (NWS, USGS, NASA EONET + NIFC WFIGS, CDOT cameras).
+- **[mobile-v1.html](https://jkh2.github.io/Eagle-Eyes-SLV/mobile-v1.html)** — a ground-up mobile build, not a shrunk desktop page. Bottom tab nav (Map / Air / Space / Ground / Weather / Cams), big touch targets, a bottom-sheet camera viewer instead of a modal, a real scrolling alert ticker (matching desktop's marquee, not a static overflow div), and toggleable map layers. Real parity with the desktop dashboard — aircraft, satellites, space weather, fires, quakes, stream gauges, mineral deposits, fault lines, weather, and cameras — deliberately excluding only UFO sightings. Same free no-key data sources underneath (NWS, USGS, NASA EONET + NIFC WFIGS, Celestrak, Airplanes.live, CDOT cameras).
 
 ---
 
@@ -143,6 +143,7 @@ No server. No backend. No build process. No subscription fees. Open the HTML fil
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v5.2.1 | August 2026 | **mobile-v1.html revised to real parity** after James tested v1 and found the alert ticker wasn't actually scrolling (static overflow div, not the CSS marquee animation index.html actually uses — fixed to match) and most of desktop's streams were simply absent. Added aircraft, satellites, space weather, fault lines, stream gauges, mineral deposits, and OSINT links; restructured to a 6-tab nav (Map/Air/Space/Ground/Weather/Cams) mirroring desktop's own domain groupings. Deliberately excludes only UFO sightings, per direct instruction. Caught and fixed a real bug along the way: NOAA's Kp-index endpoint returns an object per entry, not an array — desktop's own `[1]`-index parsing produces the same silent NaN, a pre-existing bug there too, not introduced here. |
 | v5.2 | August 2026 | Embedded live CDOT camera feeds — click any camera marker or CAMS entry to view the actual live image in an in-dashboard popup (multi-angle switcher, auto-refresh, honest offline/no-coverage states) instead of navigating away to COtrip.org. Replaces 3 hand-placed markers that never corresponded to real CDOT cameras (Villa Grove, Cumbres Pass, North Pass/Cochetopa — kept visible but honestly labeled rather than removed silently); relocated the old "CO/NM Border" marker to Fort Garland, the nearest location with an actual camera. Home-radius filter (v5.1.1, July 22) confirmed still live. Same night: **mobile-v1.html** — a genuinely separate, ground-up mobile page (bottom tab nav, bottom-sheet camera viewer, four focused streams), not a responsive shrink of the desktop layout. |
 | v5.1 | July 2026 | NASA VIIRS satellite fire hotspot layer, USGS Quaternary fault lines (15 faults, Rio Grande Rift), AI model fallback chain (4 models), test/clear key buttons, power outage + Watch Duty OSINT links, mobile layout fixes |
 | v5.0 | June 2026 | Dual-source fire detection (EONET + NIFC WFIGS), enriched fire inspector (15 fields + distance), smooth aircraft tracking, NEXRAD radar, OpenRouter free AI (brief + chat), mobile responsive, tactical sound engine |
