@@ -491,6 +491,32 @@ body {
   gap:8px;
 }
 
+/* ── CAMERA MODAL ── */
+.cam-view-row { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+.cam-view-btn {
+  background:var(--panel2); border:1px solid var(--border); color:var(--muted);
+  font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:.05em;
+  padding:5px 11px; border-radius:3px; cursor:pointer; text-transform:uppercase;
+}
+.cam-view-btn:hover { border-color:var(--accent2); color:var(--highlight); }
+.cam-view-btn.active { background:var(--accent); border-color:var(--accent2); color:#fff; }
+.cam-img-wrap {
+  position:relative; width:100%; background:#000; border:1px solid var(--border);
+  border-radius:4px; overflow:hidden; min-height:200px; display:flex;
+  align-items:center; justify-content:center;
+}
+.cam-img-wrap img { width:100%; display:block; }
+.cam-img-status {
+  position:absolute; top:6px; right:8px; font-size:9px; letter-spacing:.08em;
+  color:var(--highlight); background:rgba(3,6,3,.75); padding:2px 7px;
+  border-radius:3px; font-family:'Share Tech Mono',monospace;
+}
+.cam-offline-msg {
+  padding:24px 12px; text-align:center; color:var(--muted); font-size:11px; line-height:1.8;
+}
+.cam-offline-msg .danger { color:var(--danger); font-size:13px; display:block; margin-bottom:8px; }
+.cam-meta { margin-top:10px; font-size:10px; color:var(--muted); line-height:1.7; }
+
 /* ── BOTTOM BAR ── */
 #bottom-bar {
   position:fixed;
@@ -812,7 +838,7 @@ body {
   <!-- CAMS TAB -->
   <div class="tab-content">
     <div class="section-lbl">CDOT TRAFFIC CAMERAS — SLV REGION</div>
-    <div class="info-box">12 camera locations mapped across SLV highway corridors. Click any camera below or any 📷 marker on the map to open the live CDOT feed on COtrip.org.</div>
+    <div class="info-box">12 camera locations mapped across SLV highway corridors — 8 with a confirmed live feed, 1 currently offline (CDOT's own status, not ours), 3 with no CDOT camera coverage at that spot. Click any camera below or any 📷 marker on the map to view the live feed in a popup, right here on the dashboard.</div>
 
     <div id="cam-grid" style="display:flex;flex-direction:column;gap:4px;">
     </div>
@@ -2205,7 +2231,82 @@ function openModal(title, body, isHtml) {
   }
   document.getElementById('modal').classList.add('open');
 }
-function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  if (camRefreshTimer) { clearInterval(camRefreshTimer); camRefreshTimer = null; }
+}
+
+// ══════════════════════════════════════════════════
+//  CDOT CAMERA MODAL — live feed, in-dashboard, auto-refreshing
+// ══════════════════════════════════════════════════
+let camRefreshTimer = null;
+const CAM_REFRESH_MS = 15000; // CDOT's own still cameras typically update on this order
+
+function camImgUrl(view) {
+  return CAM_BASE + view.path + '?' + Date.now();
+}
+
+function openCameraModal(cam) {
+  playSound('inspect');
+
+  if (cam.status !== 'live' || !cam.views.length) {
+    const reason = cam.status === 'offline'
+      ? 'CDOT has a real camera here, but it is currently reporting no signal.'
+      : 'CDOT does not have a traffic camera at this location.';
+    openModal('📷 ' + cam.name, `
+      <div class="cam-offline-msg">
+        <span class="danger">NO LIVE FEED AVAILABLE</span>
+        ${reason}<br><br>
+        <a href="https://www.cotrip.org/list/cameras" target="_blank" style="color:var(--accent2);">
+          Check COtrip's full camera list →
+        </a>
+      </div>
+      <div class="cam-meta">${cam.route} · ${cam.lat.toFixed(4)}°, ${cam.lon.toFixed(4)}°</div>
+    `, true);
+    return;
+  }
+
+  let activeView = 0;
+
+  const bodyHtml = () => {
+    const view = cam.views[activeView];
+    const viewBtns = cam.views.length > 1
+      ? '<div class="cam-view-row">' + cam.views.map((v, i) =>
+          `<button class="cam-view-btn${i === activeView ? ' active' : ''}" onclick="camSwitchView(${i})">${v.label}</button>`
+        ).join('') + '</div>'
+      : '';
+    return `
+      ${viewBtns}
+      <div class="cam-img-wrap">
+        <span class="cam-img-status" id="cam-status-badge">● LIVE</span>
+        <img id="cam-live-img" src="${camImgUrl(view)}"
+             onerror="camImgError()" alt="${cam.name} — ${view.label}">
+      </div>
+      <div class="cam-meta">${cam.route} · ${cam.lat.toFixed(4)}°, ${cam.lon.toFixed(4)}° · refreshes every ${CAM_REFRESH_MS/1000}s</div>
+    `;
+  };
+
+  window.camSwitchView = (i) => {
+    activeView = i;
+    document.getElementById('modal-body').innerHTML = bodyHtml();
+  };
+  window.camImgError = () => {
+    const badge = document.getElementById('cam-status-badge');
+    if (badge) { badge.textContent = '⚠ NO SIGNAL'; badge.style.color = 'var(--danger)'; }
+  };
+  window.camRefreshTick = () => {
+    const img = document.getElementById('cam-live-img');
+    const badge = document.getElementById('cam-status-badge');
+    if (!img) return;
+    img.src = camImgUrl(cam.views[activeView]);
+    if (badge) { badge.textContent = '● LIVE'; badge.style.color = 'var(--highlight)'; }
+  };
+
+  openModal('📷 ' + cam.name, bodyHtml(), true);
+
+  if (camRefreshTimer) clearInterval(camRefreshTimer);
+  camRefreshTimer = setInterval(() => window.camRefreshTick(), CAM_REFRESH_MS);
+}
 
 // ══════════════════════════════════════════════════
 //  TABS
@@ -2668,57 +2769,103 @@ function loadUFOSightings() {
 }
 
 // ══════════════════════════════════════════════════
-//  CDOT WEBCAMS — markers link to COtrip live views
+//  CDOT WEBCAMS — live embedded feeds via COtrip's own
+//  image server (cocam.carsprogram.org), no API key.
+//
+//  Every entry below was verified live August 7, 2026 by watching
+//  cotrip.org/list/cameras' own network traffic — real camera IDs,
+//  real locations, real status. Three of the original 12 hand-placed
+//  markers turned out not to correspond to any actual CDOT camera
+//  (Villa Grove, Cumbres Pass, North Pass/Cochetopa) — CDOT simply
+//  doesn't have coverage there. Rather than keep a marker that always
+//  fails, they're kept here with status:'none' so the map is honest
+//  about it instead of silently broken. The old "CO/NM Border" point
+//  didn't correspond to a real camera either — the nearest real one is
+//  30mi north in Fort Garland, so the entry was moved to match reality
+//  rather than kept at a made-up coordinate.
+//
+//  status: 'live' = confirmed working camera(s) below
+//          'offline' = real camera, but CDOT itself is reporting no
+//                      signal as of the verification pass (may return)
+//          'none' = no CDOT camera exists at/near this location
 // ══════════════════════════════════════════════════
+const CAM_BASE = 'https://cocam.carsprogram.org';
 const CDOT_CAMS = [
-  { name:'Antonito — Hwy 285/17',       lat:37.0742, lon:-105.6579, route:'US 285' },
-  { name:'La Veta Pass — US 160',        lat:37.5029, lon:-105.2179, route:'US 160' },
-  { name:'Wolf Creek Pass East — US 160', lat:37.4866, lon:-106.7952, route:'US 160' },
-  { name:'Wolf Creek Pass West — US 160', lat:37.4710, lon:-106.8400, route:'US 160' },
-  { name:'Center — CO 112',              lat:37.7536, lon:-106.1091, route:'CO 112' },
-  { name:'Poncha Pass — US 285',         lat:38.4184, lon:-106.0657, route:'US 285' },
-  { name:'Villa Grove — US 285',         lat:38.2541, lon:-105.9677, route:'US 285' },
-  { name:'South Fork — US 160',          lat:37.6716, lon:-106.6397, route:'US 160' },
-  { name:'CO/NM Border — Hwy 159',      lat:36.9945, lon:-105.7233, route:'CO 159' },
-  { name:'Cumbres Pass — CO 17',         lat:36.9940, lon:-106.4480, route:'CO 17' },
-  { name:'North Pass/Cochetopa — CO 114',lat:38.1380, lon:-106.5920, route:'CO 114' },
-  { name:'Monte Vista — US 160',         lat:37.5792, lon:-106.1484, route:'US 160' },
+  { name:'Antonito — CO 17 at US 285',   lat:37.0742, lon:-105.6579, route:'CO 17 / US 285',
+    status:'live',
+    views:[{label:'East', path:'/Cellular/017W03900CAM1RHS-E.jpg'}] },
+  { name:'La Veta Pass — US 160',        lat:37.5029, lon:-105.2179, route:'US 160',
+    status:'live',
+    views:[{label:'East', path:'/Cellular/160W27840CAM1RHS-E.jpg'},
+           {label:'West', path:'/Cellular/160W27840CAM1RHS-W.jpg'}] },
+  { name:'Wolf Creek Pass East — US 160', lat:37.4866, lon:-106.7952, route:'US 160',
+    status:'live',
+    views:[{label:'East', path:'/Cellular/160E16820CAM1RHS-E.jpg'},
+           {label:'West', path:'/Cellular/160E16820CAM1RHS-W.jpg'},
+           {label:'Roadway', path:'/Cellular/160E16820CAM1RHS-Roadway.jpg'}] },
+  { name:'Wolf Creek Pass West — US 160', lat:37.4710, lon:-106.8400, route:'US 160',
+    status:'live',
+    views:[{label:'View', path:'/Snapshots/160E16515CAM2RHS.flv.png'}] },
+  { name:'Center — CO 112 at US 285',    lat:37.7536, lon:-106.1091, route:'CO 112',
+    status:'live',
+    views:[{label:'South', path:'/Cellular/112W01315CAM1NEC-S.jpg'},
+           {label:'West', path:'/Cellular/112W01315CAM1NEC-W.jpg'}] },
+  { name:'Poncha Pass — US 285',         lat:38.4184, lon:-106.0657, route:'US 285',
+    // Real camera (US 285 MP 119.10 SB, Looking North/South) confirmed to exist
+    // on cotrip.org, but it's reporting no signal there too — its own frontend
+    // never requests an image URL while offline, so there's no way to observe
+    // the real image path right now. Left empty rather than guessed; if CDOT
+    // brings it back online, re-check cotrip.org/list/cameras and fill this in
+    // for real instead of inferring it from the naming pattern of other cameras.
+    status:'offline', views:[] },
+  { name:'Villa Grove — US 285',         lat:38.2541, lon:-105.9677, route:'US 285',
+    status:'none' },
+  { name:'South Fork — US 160 at CO 149', lat:37.6716, lon:-106.6397, route:'US 160',
+    status:'live',
+    views:[{label:'View', path:'/Snapshots/160W18610CAM1RHS.flv.png'}] },
+  { name:'Fort Garland — US 160 at CO 159', lat:37.4236, lon:-105.4325, route:'US 160',
+    status:'live',
+    views:[{label:'East', path:'/Cellular/160W25825CAM1NEC-E.jpg'},
+           {label:'South', path:'/Cellular/160W25825CAM1NEC-S.jpg'},
+           {label:'West', path:'/Cellular/160W25825CAM1NEC-W.jpg'}] },
+  { name:'Cumbres Pass — CO 17',         lat:36.9940, lon:-106.4480, route:'CO 17',
+    status:'none' },
+  { name:'North Pass/Cochetopa — CO 114',lat:38.1380, lon:-106.5920, route:'CO 114',
+    status:'none' },
+  { name:'Monte Vista — US 160 at US 285', lat:37.5792, lon:-106.1484, route:'US 160',
+    status:'live',
+    views:[{label:'East', path:'/Cellular/160W21570CAM1NWC-E.jpg'},
+           {label:'North', path:'/Cellular/160W21570CAM1NWC-N.jpg'},
+           {label:'West', path:'/Cellular/160W21570CAM1NWC-W.jpg'}] },
 ];
 
 function initCamMarkers() {
   CDOT_CAMS.forEach(cam => {
+    const dim = cam.status !== 'live' ? 'opacity:.45;' : '';
     const icon = L.divIcon({
       className:'',
-      html:'<div style="font-size:16px;filter:drop-shadow(0 0 4px rgba(204,170,34,.7));cursor:pointer;">📷</div>',
+      html:`<div style="font-size:16px;${dim}filter:drop-shadow(0 0 4px rgba(204,170,34,.7));cursor:pointer;">📷</div>`,
       iconSize:[20,20], iconAnchor:[10,10]
     });
     L.marker([cam.lat, cam.lon], {icon})
-      .bindTooltip(cam.name, {permanent:false, direction:'top'})
-      .on('click', () => {
-        playSound('inspect');
-        showInspector({
-          title: '📷 ' + cam.name,
-          rows: [
-            ['Route',    cam.route],
-            ['Lat/Lon',  cam.lat.toFixed(4) + '°, ' + cam.lon.toFixed(4) + '°'],
-            ['Status',   'Click VIEW CAMERA below'],
-          ]
-        });
-        // Open COtrip map centered on camera location
-        window.open('https://www.cotrip.org/map#/camera?lat=' + cam.lat + '&lng=' + cam.lon + '&z=14', '_blank');
-      })
+      .bindTooltip(cam.name + (cam.status !== 'live' ? ' (no live feed)' : ''),
+                   {permanent:false, direction:'top'})
+      .on('click', () => openCameraModal(cam))
       .addTo(map);
   });
 }
 
 function renderCamGrid() {
   const grid = document.getElementById('cam-grid');
-  grid.innerHTML = CDOT_CAMS.map(cam =>
-    '<div class="data-card" style="padding:8px;cursor:pointer;" onclick="window.open(\'https://www.cotrip.org/map#/camera?lat=' + cam.lat + '&lng=' + cam.lon + '&z=14\',\'_blank\')">' +
-    '<div class="card-title">📷 ' + cam.name + '</div>' +
-    '<div class="card-detail" style="font-size:9px;color:var(--muted);">' + cam.route + ' · Click to view on COtrip</div>' +
-    '</div>'
-  ).join('');
+  grid.innerHTML = CDOT_CAMS.map((cam, i) => {
+    const statusLabel = cam.status === 'live' ? 'Live feed'
+      : cam.status === 'offline' ? 'Camera offline' : 'No camera here';
+    const dim = cam.status !== 'live' ? 'opacity:.55;' : '';
+    return '<div class="data-card" style="padding:8px;cursor:pointer;' + dim + '" onclick="openCameraModal(CDOT_CAMS[' + i + '])">' +
+      '<div class="card-title">📷 ' + cam.name + '</div>' +
+      '<div class="card-detail" style="font-size:9px;color:var(--muted);">' + cam.route + ' · ' + statusLabel + '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function refreshCams() { renderCamGrid(); }

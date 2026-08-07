@@ -3,7 +3,7 @@
 
 > **"The ultimate zero-cost personal GEINT dashboard for the high desert."**
 
-[![Version](https://img.shields.io/badge/version-5.1-brightgreen)](#)
+[![Version](https://img.shields.io/badge/version-5.2-brightgreen)](#)
 [![License](https://img.shields.io/badge/license-MIT-blue)](#)
 [![No Server](https://img.shields.io/badge/server-none-green)](#)
 [![No Build](https://img.shields.io/badge/build-none-green)](#)
@@ -97,9 +97,11 @@ No server. No backend. No build process. No subscription fees. Open the HTML fil
 - 🔊/🔇 mute toggle in header
 
 ### Webcam Layer
-- 12 CDOT camera locations mapped across SLV highway corridors
-- Click any 📷 map marker → opens live COtrip camera view for that location
-- CAMS tab with one-click access to all camera positions
+- 12 CDOT camera locations mapped across SLV highway corridors — 8 with a confirmed live feed, 1 currently offline (CDOT's own status), 3 with no CDOT camera coverage at that spot (shown honestly, not hidden)
+- **Click any 📷 map marker or CAMS tab entry → live camera feed opens in a popup, right on the dashboard** — no more tab-away to COtrip.org
+- Multi-angle cameras (several locations have 2-3 real viewing directions) get an in-popup view switcher
+- Feed auto-refreshes every 15s; a LIVE / NO SIGNAL badge reflects actual load status
+- Images served directly from CDOT's own camera image host (`cocam.carsprogram.org`) — no API key, no backend, same zero-cost philosophy as everything else here
 - Links to Windy.com webcams, Wolf Creek Ski Area, ColoradoWebCam.net
 
 ### OSINT Tab External Links
@@ -137,6 +139,7 @@ No server. No backend. No build process. No subscription fees. Open the HTML fil
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v5.2 | August 2026 | Embedded live CDOT camera feeds — click any camera marker or CAMS entry to view the actual live image in an in-dashboard popup (multi-angle switcher, auto-refresh, honest offline/no-coverage states) instead of navigating away to COtrip.org. Replaces 3 hand-placed markers that never corresponded to real CDOT cameras (Villa Grove, Cumbres Pass, North Pass/Cochetopa — kept visible but honestly labeled rather than removed silently); relocated the old "CO/NM Border" marker to Fort Garland, the nearest location with an actual camera. Home-radius filter (v5.1.1, July 22) confirmed still live. |
 | v5.1 | July 2026 | NASA VIIRS satellite fire hotspot layer, USGS Quaternary fault lines (15 faults, Rio Grande Rift), AI model fallback chain (4 models), test/clear key buttons, power outage + Watch Duty OSINT links, mobile layout fixes |
 | v5.0 | June 2026 | Dual-source fire detection (EONET + NIFC WFIGS), enriched fire inspector (15 fields + distance), smooth aircraft tracking, NEXRAD radar, OpenRouter free AI (brief + chat), mobile responsive, tactical sound engine |
 | v4.1 | March 2026 | USGS stream gauges, MRDS mineral deposits, NUFORC UFO sightings (139 records), traffic moved to Ground tab |
@@ -221,6 +224,7 @@ For more: **[jameskeithharwood.com](https://jameskeithharwood.com)**
 - [x] Tactical sound engine
 - [x] Stream gauges, mineral deposits, UFO sightings
 - [x] 12 CDOT camera locations
+- [x] Embedded live camera feeds — in-dashboard popup, no tab-away
 
 ### Next Up
 - [ ] NRCS SNOTEL snowpack stations (14 SLV stations identified)
