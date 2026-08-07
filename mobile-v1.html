@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a140a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Eagle Eyes">
+<title>Eagle Eyes SLV — Mobile</title>
+<meta name="description" content="San Luis Valley situational awareness — fires, road cameras, weather, and quakes, built for your phone.">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<style>
+  :root{
+    --bg:#050a05; --panel:#0a140a; --panel2:#0f1a0f; --border:#1e3a1e;
+    --accent:#3a7a2a; --accent2:#5aaa3a; --highlight:#88dd55; --text:#d8f0c8;
+    --muted:#6a8a6a; --danger:#e04444; --warn:#e0a838;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif; overscroll-behavior:none;}
+  body{display:flex; flex-direction:column; height:100vh; height:100dvh;}
+
+  /* ── HEADER ── */
+  header{
+    padding:calc(10px + var(--safe-top)) 14px 10px;
+    background:var(--panel); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+  }
+  header .brand{font-weight:700; font-size:15px; letter-spacing:.04em; color:var(--highlight);}
+  header .brand span{color:var(--muted); font-weight:400; font-size:10px; display:block; letter-spacing:.1em;}
+  header .clock{font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums;}
+
+  /* ── ALERT BANNER ── */
+  #alert-banner{
+    display:none; padding:8px 14px; background:rgba(224,68,68,.15);
+    border-bottom:1px solid var(--danger); font-size:12px; color:#ffb8b8;
+    flex-shrink:0; overflow-x:auto; white-space:nowrap;
+  }
+  #alert-banner.show{display:block;}
+
+  /* ── PANELS ── */
+  main{flex:1; overflow:hidden; position:relative;}
+  .panel{
+    position:absolute; inset:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    display:none; padding:12px 14px calc(14px + var(--safe-bottom) + 62px);
+  }
+  .panel.active{display:block;}
+  #panel-map{padding:0;}
+  #map{width:100%; height:100%;}
+
+  .section-title{
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent2);
+    margin:16px 0 8px; font-weight:600;
+  }
+  .section-title:first-child{margin-top:2px;}
+
+  /* ── CARDS ── */
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:14px; margin-bottom:10px; -webkit-tap-highlight-color:transparent;
+  }
+  .card.tap{cursor:pointer;}
+  .card.tap:active{background:var(--panel2); border-color:var(--accent);}
+  .card-title{font-size:14px; font-weight:600; color:var(--text); margin-bottom:3px;}
+  .card-sub{font-size:11.5px; color:var(--muted); line-height:1.5;}
+  .card-badge{
+    display:inline-block; font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+    padding:2px 8px; border-radius:10px; margin-top:6px; font-weight:600;
+  }
+  .badge-live{background:rgba(90,170,58,.25); color:var(--highlight);}
+  .badge-offline{background:rgba(224,68,68,.2); color:#ff9999;}
+  .badge-none{background:rgba(120,120,120,.2); color:var(--muted);}
+  .badge-danger{background:rgba(224,68,68,.28); color:#ffb8b8;}
+  .badge-warn{background:rgba(224,168,56,.25); color:#ffd888;}
+
+  .empty-state{text-align:center; color:var(--muted); font-size:13px; padding:40px 20px; line-height:1.7;}
+
+  /* Big glanceable weather block */
+  .wx-hero{
+    background:linear-gradient(160deg, var(--panel2), var(--panel));
+    border:1px solid var(--border); border-radius:14px; padding:22px 18px; margin-bottom:14px;
+    text-align:center;
+  }
+  .wx-hero .temp{font-size:52px; font-weight:200; color:var(--highlight); line-height:1;}
+  .wx-hero .cond{font-size:15px; color:var(--text); margin-top:4px;}
+  .wx-hero .loc{font-size:11px; color:var(--muted); margin-top:10px; letter-spacing:.06em; text-transform:uppercase;}
+  .wx-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px;}
+  .wx-stat{background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+  .wx-stat .label{font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+  .wx-stat .value{font-size:16px; color:var(--text); margin-top:2px;}
+  .forecast-row{padding:10px 0; border-bottom:1px solid var(--border); font-size:12.5px;}
+  .forecast-row:last-child{border-bottom:none;}
+  .forecast-row .name{color:var(--accent2); font-weight:600; margin-bottom:2px;}
+
+  /* ── BOTTOM TAB BAR ── */
+  nav#tabs{
+    position:fixed; left:0; right:0; bottom:0; z-index:500;
+    background:var(--panel); border-top:1px solid var(--border);
+    display:flex; padding-bottom:var(--safe-bottom);
+  }
+  nav#tabs button{
+    flex:1; background:none; border:none; color:var(--muted); padding:9px 4px 8px;
+    display:flex; flex-direction:column; align-items:center; gap:3px; font-size:9.5px;
+    letter-spacing:.04em; text-transform:uppercase; font-family:inherit;
+  }
+  nav#tabs button .ic{font-size:20px; line-height:1;}
+  nav#tabs button.active{color:var(--highlight);}
+  nav#tabs button.active .ic{filter:drop-shadow(0 0 6px rgba(136,221,85,.6));}
+
+  /* ── SHEET (camera / detail popup) ── */
+  #sheet-backdrop{
+    position:fixed; inset:0; background:rgba(2,4,2,.75); z-index:900; display:none;
+  }
+  #sheet-backdrop.show{display:block;}
+  #sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:901;
+    background:var(--panel); border-top:1px solid var(--accent);
+    border-radius:16px 16px 0 0; max-height:88vh; overflow-y:auto;
+    transform:translateY(100%); transition:transform .25s ease-out;
+    padding-bottom:calc(16px + var(--safe-bottom));
+  }
+  #sheet.show{transform:translateY(0);}
+  #sheet .handle{width:36px; height:4px; background:var(--border); border-radius:3px; margin:10px auto 4px;}
+  #sheet-body{padding:6px 16px 4px;}
+  #sheet-title{font-size:15px; font-weight:600; padding:8px 16px 4px; color:var(--highlight);}
+
+  .view-row{display:flex; gap:6px; margin:8px 0 10px; flex-wrap:wrap;}
+  .view-btn{
+    background:var(--panel2); border:1px solid var(--border); color:var(--muted);
+    font-size:11px; padding:6px 13px; border-radius:16px; letter-spacing:.03em;
+  }
+  .view-btn.active{background:var(--accent); border-color:var(--accent2); color:#fff;}
+  .cam-img-wrap{position:relative; background:#000; border-radius:8px; overflow:hidden; min-height:180px;}
+  .cam-img-wrap img{width:100%; display:block;}
+  .cam-status{position:absolute; top:8px; right:8px; font-size:9.5px; background:rgba(2,4,2,.7);
+    padding:3px 9px; border-radius:10px; color:var(--highlight); letter-spacing:.05em;}
+  .offline-box{padding:30px 10px; text-align:center; color:var(--muted); font-size:13px; line-height:1.8;}
+  .offline-box .warn{color:var(--danger); font-size:14px; display:block; margin-bottom:8px; font-weight:600;}
+
+  ::-webkit-scrollbar{width:0; height:0;}
+  a{color:var(--accent2);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">🦅 EAGLE EYES <span>SAN LUIS VALLEY · MOBILE</span></div>
+  <div class="clock" id="clock">—</div>
+</header>
+
+<div id="alert-banner"></div>
+
+<main>
+  <div class="panel active" id="panel-map">
+    <div id="map"></div>
+  </div>
+
+  <div class="panel" id="panel-fires">
+    <div class="section-title">Active Fires — Colorado &amp; Nearby</div>
+    <div id="fire-cards"><div class="empty-state">Loading fire data…</div></div>
+  </div>
+
+  <div class="panel" id="panel-cams">
+    <div class="section-title">CDOT Road Cameras — SLV</div>
+    <div id="cam-cards"></div>
+  </div>
+
+  <div class="panel" id="panel-weather">
+    <div class="wx-hero">
+      <div class="temp" id="wx-temp">—</div>
+      <div class="cond" id="wx-cond">Loading…</div>
+      <div class="loc">Alamosa, CO</div>
+    </div>
+    <div class="wx-grid">
+      <div class="wx-stat"><div class="label">Wind</div><div class="value" id="wx-wind">—</div></div>
+      <div class="wx-stat"><div class="label">Humidity</div><div class="value" id="wx-hum">—</div></div>
+      <div class="wx-stat"><div class="label">Visibility</div><div class="value" id="wx-vis">—</div></div>
+      <div class="wx-stat"><div class="label">Pressure</div><div class="value" id="wx-pres">—</div></div>
+    </div>
+    <div class="section-title">Forecast</div>
+    <div class="card" id="wx-forecast">Loading…</div>
+    <div class="section-title">Recent Seismic — 200mi</div>
+    <div id="quake-cards"><div class="empty-state">Loading seismic data…</div></div>
+  </div>
+</main>
+
+<nav id="tabs">
+  <button class="active" data-panel="map" onclick="switchPanel('map')"><span class="ic">🗺</span>Map</button>
+  <button data-panel="fires" onclick="switchPanel('fires')"><span class="ic">🔥</span>Fires</button>
+  <button data-panel="cams" onclick="switchPanel('cams')"><span class="ic">📷</span>Cams</button>
+  <button data-panel="weather" onclick="switchPanel('weather')"><span class="ic">🌤</span>Weather</button>
+</nav>
+
+<div id="sheet-backdrop" onclick="closeSheet()"></div>
+<div id="sheet">
+  <div class="handle"></div>
+  <div id="sheet-title"></div>
+  <div id="sheet-body"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+// ══════════════════════════════════════════════════
+//  Eagle Eyes SLV — Mobile v1
+//  A ground-up mobile build, not a shrunk desktop page.
+//  Same free, no-key data sources as index.html (NWS, USGS,
+//  NASA EONET + NIFC WFIGS, CDOT via cocam.carsprogram.org) —
+//  same zero-key, zero-backend philosophy — but four focused
+//  sections instead of fifteen streams, bottom tab nav instead
+//  of a sidebar, and a bottom sheet instead of desktop's modal,
+//  because a phone in the field wants fires/cams/weather/quakes
+//  at a glance, not a full desk dashboard shrunk to fit.
+//  Built August 7, 2026.
+// ══════════════════════════════════════════════════
+
+const HOME = { lat:37.0781, lon:-106.0028 };
+const HOME_RADIUS_MI = 120; // fixed, generous field-relevant radius — no toggle UI on mobile v1
+
+function distMiles(lat1, lon1, lat2, lon2) {
+  const R = 3959;
+  const dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function withinHome(lat, lon) { return distMiles(HOME.lat, HOME.lon, lat, lon) <= HOME_RADIUS_MI; }
+
+// ── Clock ──
+function tickClock() {
+  document.getElementById('clock').textContent =
+    new Date().toISOString().slice(11,16) + ' UTC';
+}
+tickClock(); setInterval(tickClock, 30000);
+
+// ── Alert banner (top strip, only shows when something's real) ──
+let alerts = [];
+function pushAlert(text) {
+  if (alerts.includes(text)) return;
+  alerts.push(text);
+  renderAlerts();
+}
+function renderAlerts() {
+  const el = document.getElementById('alert-banner');
+  if (!alerts.length) { el.classList.remove('show'); return; }
+  el.innerHTML = alerts.map(a => '⚠ ' + a).join('&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;');
+  el.classList.add('show');
+}
+
+// ── Tabs ──
+function switchPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.querySelectorAll('#tabs button').forEach(b =>
+    b.classList.toggle('active', b.dataset.panel === name));
+  if (name === 'map') setTimeout(() => map.invalidateSize(), 50);
+}
+
+// ── Bottom sheet (camera feed / detail) ──
+function openSheet(title, bodyHtml) {
+  document.getElementById('sheet-title').textContent = title;
+  document.getElementById('sheet-body').innerHTML = bodyHtml;
+  document.getElementById('sheet-backdrop').classList.add('show');
+  document.getElementById('sheet').classList.add('show');
+}
+let camRefreshTimer = null;
+function closeSheet() {
+  document.getElementById('sheet-backdrop').classList.remove('show');
+  document.getElementById('sheet').classList.remove('show');
+  if (camRefreshTimer) { clearInterval(camRefreshTimer); camRefreshTimer = null; }
+}
+
+// ── Map ──
+const map = L.map('map', { zoomControl:false, attributionControl:true })
+  .setView([37.5, -105.9], 8);
+L.control.zoom({ position:'topright' }).addTo(map);
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution:'© Esri World Imagery', maxZoom:18
+}).addTo(map);
+L.marker([HOME.lat, HOME.lon], {
+  icon: L.divIcon({ className:'', html:'<div style="font-size:18px;">🏠</div>', iconSize:[22,22], iconAnchor:[11,11] })
+}).addTo(map).bindTooltip('Home');
+
+const fireLayer = L.layerGroup().addTo(map);
+const quakeLayer = L.layerGroup().addTo(map);
+const camLayer = L.layerGroup().addTo(map);
+
+// ══════════════════════════════════════════════════
+//  CDOT CAMERAS — same verified data as index.html v5.2
+// ══════════════════════════════════════════════════
+const CAM_BASE = 'https://cocam.carsprogram.org';
+const CDOT_CAMS = [
+  { name:'Antonito — CO 17 at US 285',   lat:37.0742, lon:-105.6579, route:'CO 17 / US 285',
+    status:'live', views:[{label:'East', path:'/Cellular/017W03900CAM1RHS-E.jpg'}] },
+  { name:'La Veta Pass — US 160',        lat:37.5029, lon:-105.2179, route:'US 160',
+    status:'live', views:[{label:'East', path:'/Cellular/160W27840CAM1RHS-E.jpg'},
+                          {label:'West', path:'/Cellular/160W27840CAM1RHS-W.jpg'}] },
+  { name:'Wolf Creek Pass East — US 160', lat:37.4866, lon:-106.7952, route:'US 160',
+    status:'live', views:[{label:'East', path:'/Cellular/160E16820CAM1RHS-E.jpg'},
+                          {label:'West', path:'/Cellular/160E16820CAM1RHS-W.jpg'},
+                          {label:'Roadway', path:'/Cellular/160E16820CAM1RHS-Roadway.jpg'}] },
+  { name:'Wolf Creek Pass West — US 160', lat:37.4710, lon:-106.8400, route:'US 160',
+    status:'live', views:[{label:'View', path:'/Snapshots/160E16515CAM2RHS.flv.png'}] },
+  { name:'Center — CO 112 at US 285',    lat:37.7536, lon:-106.1091, route:'CO 112',
+    status:'live', views:[{label:'South', path:'/Cellular/112W01315CAM1NEC-S.jpg'},
+                          {label:'West', path:'/Cellular/112W01315CAM1NEC-W.jpg'}] },
+  { name:'Poncha Pass — US 285',         lat:38.4184, lon:-106.0657, route:'US 285',
+    status:'offline', views:[] },
+  { name:'Villa Grove — US 285',         lat:38.2541, lon:-105.9677, route:'US 285', status:'none' },
+  { name:'South Fork — US 160 at CO 149', lat:37.6716, lon:-106.6397, route:'US 160',
+    status:'live', views:[{label:'View', path:'/Snapshots/160W18610CAM1RHS.flv.png'}] },
+  { name:'Fort Garland — US 160 at CO 159', lat:37.4236, lon:-105.4325, route:'US 160',
+    status:'live', views:[{label:'East', path:'/Cellular/160W25825CAM1NEC-E.jpg'},
+                          {label:'South', path:'/Cellular/160W25825CAM1NEC-S.jpg'},
+                          {label:'West', path:'/Cellular/160W25825CAM1NEC-W.jpg'}] },
+  { name:'Cumbres Pass — CO 17',         lat:36.9940, lon:-106.4480, route:'CO 17', status:'none' },
+  { name:'North Pass/Cochetopa — CO 114',lat:38.1380, lon:-106.5920, route:'CO 114', status:'none' },
+  { name:'Monte Vista — US 160 at US 285', lat:37.5792, lon:-106.1484, route:'US 160',
+    status:'live', views:[{label:'East', path:'/Cellular/160W21570CAM1NWC-E.jpg'},
+                          {label:'North', path:'/Cellular/160W21570CAM1NWC-N.jpg'},
+                          {label:'West', path:'/Cellular/160W21570CAM1NWC-W.jpg'}] },
+];
+
+function camImgUrl(view) { return CAM_BASE + view.path + '?' + Date.now(); }
+
+function openCamera(cam) {
+  if (cam.status !== 'live' || !cam.views.length) {
+    const reason = cam.status === 'offline'
+      ? 'CDOT has a real camera here, but it is currently reporting no signal.'
+      : 'CDOT does not have a traffic camera at this location.';
+    openSheet('📷 ' + cam.name, `
+      <div class="offline-box"><span class="warn">NO LIVE FEED</span>${reason}</div>
+    `);
+    return;
+  }
+  let activeView = 0;
+  const body = () => {
+    const view = cam.views[activeView];
+    const btns = cam.views.length > 1
+      ? '<div class="view-row">' + cam.views.map((v,i) =>
+          `<button class="view-btn${i===activeView?' active':''}" onclick="camSwitch(${i})">${v.label}</button>`
+        ).join('') + '</div>' : '';
+    return `${btns}<div class="cam-img-wrap">
+      <span class="cam-status" id="cs-badge">● LIVE</span>
+      <img id="cs-img" src="${camImgUrl(view)}" onerror="camErr()" alt="${cam.name}">
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;">${cam.route} · refreshes every 15s</div>`;
+  };
+  window.camSwitch = (i) => { activeView = i; document.getElementById('sheet-body').innerHTML = body(); };
+  window.camErr = () => {
+    const b = document.getElementById('cs-badge');
+    if (b) { b.textContent = '⚠ NO SIGNAL'; b.style.color = 'var(--danger)'; }
+  };
+  openSheet('📷 ' + cam.name, body());
+  if (camRefreshTimer) clearInterval(camRefreshTimer);
+  camRefreshTimer = setInterval(() => {
+    const img = document.getElementById('cs-img');
+    if (!img) return;
+    img.src = camImgUrl(cam.views[activeView]);
+  }, 15000);
+}
+
+function renderCamCards() {
+  const wrap = document.getElementById('cam-cards');
+  wrap.innerHTML = CDOT_CAMS.map((cam, i) => {
+    const badge = cam.status === 'live' ? '<span class="card-badge badge-live">Live feed</span>'
+      : cam.status === 'offline' ? '<span class="card-badge badge-offline">Offline</span>'
+      : '<span class="card-badge badge-none">No camera</span>';
+    return `<div class="card tap" onclick="openCamera(CDOT_CAMS[${i}])">
+      <div class="card-title">📷 ${cam.name}</div>
+      <div class="card-sub">${cam.route}</div>
+      ${badge}
+    </div>`;
+  }).join('');
+
+  CDOT_CAMS.forEach((cam, i) => {
+    const dim = cam.status !== 'live' ? 'opacity:.5;' : '';
+    const icon = L.divIcon({ className:'',
+      html:`<div style="font-size:15px;${dim}filter:drop-shadow(0 0 3px rgba(204,170,34,.7));">📷</div>`,
+      iconSize:[18,18], iconAnchor:[9,9] });
+    L.marker([cam.lat, cam.lon], {icon})
+      .on('click', () => openCamera(cam))
+      .addTo(camLayer);
+  });
+}
+
+// ══════════════════════════════════════════════════
+//  WEATHER — NWS, Alamosa (KALS) — same endpoint as index.html
+// ══════════════════════════════════════════════════
+async function fetchWeather() {
+  try {
+    const r = await fetch('https://api.weather.gov/stations/KALS/observations/latest', {
+      headers:{'User-Agent':'EagleEyesSLV-Mobile/1.0','Accept':'application/geo+json'}
+    });
+    if (!r.ok) throw new Error('NWS obs failed');
+    const d = await r.json();
+    const p = d.properties;
+    const tempC = p.temperature?.value;
+    const tempF = tempC != null ? Math.round(tempC*9/5+32) : null;
+    const windMs = p.windSpeed?.value;
+    const windKts = windMs != null ? Math.round(windMs*1.944) : null;
+    const humidity = p.relativeHumidity?.value;
+    const vis = p.visibility?.value;
+    const pres = p.barometricPressure?.value;
+
+    document.getElementById('wx-temp').textContent = tempF != null ? tempF + '°F' : '—';
+    document.getElementById('wx-cond').textContent = p.textDescription || 'Conditions unavailable';
+    document.getElementById('wx-wind').textContent = windKts != null ? windKts + ' kts' : '—';
+    document.getElementById('wx-hum').textContent = humidity != null ? Math.round(humidity) + '%' : '—';
+    document.getElementById('wx-vis').textContent = vis != null ? (vis/1000).toFixed(1) + ' km' : '—';
+    document.getElementById('wx-pres').textContent = pres != null ? (pres/100).toFixed(0) + ' hPa' : '—';
+
+    if (windKts != null && windKts > 30) pushAlert(`High winds — ${windKts} kts at Alamosa`);
+
+    const r2 = await fetch('https://api.weather.gov/gridpoints/PUB/45,25/forecast', {
+      headers:{'User-Agent':'EagleEyesSLV-Mobile/1.0','Accept':'application/geo+json'}
+    });
+    if (r2.ok) {
+      const d2 = await r2.json();
+      const periods = (d2.properties?.periods || []).slice(0,4);
+      document.getElementById('wx-forecast').innerHTML = periods.map(pe =>
+        `<div class="forecast-row"><div class="name">${pe.name}</div>${pe.shortForecast} · ${pe.temperature}°${pe.temperatureUnit}</div>`
+      ).join('') || 'No forecast available.';
+    }
+  } catch(e) {
+    console.error('[Weather]', e);
+    document.getElementById('wx-cond').textContent = 'Weather data unavailable';
+    document.getElementById('wx-forecast').textContent = 'Forecast unavailable.';
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  EARTHQUAKES — USGS, same endpoint as index.html
+// ══════════════════════════════════════════════════
+async function fetchQuakes() {
+  try {
+    const url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson' +
+      '&minlatitude=35&maxlatitude=40&minlongitude=-109&maxlongitude=-103' +
+      '&minmagnitude=1.5&orderby=time&limit=50';
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('USGS fail');
+    const d = await r.json();
+    const inRange = (d.features || []).filter(q => {
+      const [lon,lat] = q.geometry.coordinates;
+      return withinHome(lat, lon);
+    });
+
+    quakeLayer.clearLayers();
+    inRange.forEach(q => {
+      const [lon,lat] = q.geometry.coordinates;
+      const mag = q.properties.mag;
+      const icon = L.divIcon({ className:'',
+        html:`<div style="font-size:${Math.max(10,mag*4)}px;opacity:${mag>2.5?1:.6}">🔴</div>`,
+        iconSize:[16,16], iconAnchor:[8,8] });
+      L.marker([lat,lon],{icon}).bindTooltip(`M${mag} — ${q.properties.place}`).addTo(quakeLayer);
+      if (mag >= 3) pushAlert(`M${mag} quake — ${q.properties.place}`);
+    });
+
+    const top5 = [...inRange].sort((a,b) => b.properties.mag - a.properties.mag).slice(0,5);
+    document.getElementById('quake-cards').innerHTML = top5.length ? top5.map(q => {
+      const m = q.properties.mag;
+      const badge = m >= 4 ? 'badge-danger' : m >= 3 ? 'badge-warn' : 'badge-none';
+      return `<div class="card">
+        <div class="card-title">🔴 M${m} — ${q.properties.place}</div>
+        <div class="card-sub">${new Date(q.properties.time).toLocaleString()}</div>
+        <span class="card-badge ${badge}">M${m}</span>
+      </div>`;
+    }).join('') : '<div class="empty-state">No significant seismic activity within 120mi.</div>';
+  } catch(e) {
+    console.error('[Quakes]', e);
+    document.getElementById('quake-cards').innerHTML = '<div class="empty-state">Seismic data unavailable.</div>';
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  FIRES — NASA EONET + NIFC WFIGS, same dual-source merge as index.html
+// ══════════════════════════════════════════════════
+async function fetchFires() {
+  const allFires = new Map();
+  try {
+    const r = await fetch('https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&status=open&limit=100&bbox=-110,35,-102,41');
+    if (r.ok) {
+      const d = await r.json();
+      (d.events || []).forEach(ev => {
+        const geom = ev.geometry?.[ev.geometry.length-1];
+        if (!geom) return;
+        const [lon,lat] = geom.coordinates;
+        allFires.set(ev.title, { name: ev.title, lat, lon, source:'NASA EONET', acres:null, pct:null });
+      });
+    }
+  } catch(e) { console.warn('[Fire EONET]', e); }
+
+  try {
+    const fields = 'poly_IncidentName,poly_GISAcres,attr_POOState,attr_PercentContained';
+    const url = 'https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query' +
+      '?where=1%3D1&outFields=' + fields +
+      '&geometry=-110,35,-102,41&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects' +
+      '&returnGeometry=true&resultRecordCount=50&f=json';
+    const r = await fetch(url);
+    if (r.ok) {
+      const d = await r.json();
+      (d.features || []).forEach(f => {
+        const a = f.attributes;
+        const name = (a.poly_IncidentName || 'Unknown Fire').trim();
+        let lat=0, lon=0;
+        if (f.geometry?.rings?.[0]) {
+          const ring = f.geometry.rings[0];
+          ring.forEach(pt => { lon += pt[0]; lat += pt[1]; });
+          lon /= ring.length; lat /= ring.length;
+        }
+        if (!lat || !lon) return;
+        const state = (a.attr_POOState || '').replace('US-','');
+        const data = { name: name + (state ? ', '+state : ''), lat, lon,
+          source:'NIFC WFIGS', acres: a.poly_GISAcres, pct: a.attr_PercentContained };
+        const existing = allFires.get(name);
+        if (existing) Object.assign(existing, data); else allFires.set(name, data);
+      });
+    }
+  } catch(e) { console.warn('[Fire WFIGS]', e); }
+
+  const fires = [...allFires.values()].filter(f => withinHome(f.lat, f.lon));
+
+  fireLayer.clearLayers();
+  fires.forEach(f => {
+    const big = f.acres > 1000;
+    const icon = L.divIcon({ className:'',
+      html:`<div style="font-size:${big?20:14}px;filter:drop-shadow(0 0 4px rgba(255,100,0,.7));">🔥</div>`,
+      iconSize:[20,20], iconAnchor:[10,10] });
+    L.marker([f.lat,f.lon],{icon}).bindTooltip(f.name).addTo(fireLayer);
+    if (big) pushAlert(`Large fire — ${f.name} (${Math.round(f.acres)} ac)`);
+  });
+
+  document.getElementById('fire-cards').innerHTML = fires.length ? fires
+    .sort((a,b) => (b.acres||0) - (a.acres||0))
+    .map(f => `<div class="card">
+      <div class="card-title">🔥 ${f.name}</div>
+      <div class="card-sub">${f.acres ? Math.round(f.acres).toLocaleString() + ' acres' : 'Size unknown'} ${f.pct != null ? '· ' + f.pct + '% contained' : ''} · ${f.source}</div>
+      ${f.acres > 1000 ? '<span class="card-badge badge-danger">Large fire</span>' : ''}
+    </div>`).join('')
+    : '<div class="empty-state">✓ No active fires within 120mi of home right now.</div>';
+}
+
+// ══════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════
+renderCamCards();
+fetchWeather();
+fetchQuakes();
+fetchFires();
+setInterval(fetchWeather, 10*60*1000);
+setInterval(fetchQuakes, 5*60*1000);
+setInterval(fetchFires, 10*60*1000);
+</script>
+</body>
+</html>

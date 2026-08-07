@@ -619,6 +619,40 @@ body {
 </head>
 <body>
 
+<!-- Mobile redirect banner — points phones to mobile-v1.html instead of the
+     cramped desktop sidebar. Detection uses viewport width, not user-agent
+     sniffing (more reliable, works for any small screen regardless of OS).
+     Dismissal is remembered per-browser via localStorage so it never nags
+     twice — a real choice, once, respected. -->
+<!-- top:48px, not top:0 — the existing #header is also position:fixed;top:0,
+     z-index:1000, and #map/#sidebar hardcode top:48px assuming header height.
+     Sitting just below the header avoids reflowing any of that; this only
+     overlaps the very top edge of the map while shown, and it's dismissible. -->
+<div id="mobile-banner" style="display:none;position:fixed;top:48px;left:0;right:0;z-index:1500;
+     background:#1a3a0f;border-bottom:2px solid #5aaa3a;padding:10px 14px;
+     align-items:center;justify-content:space-between;gap:10px;
+     font-family:'Share Tech Mono',monospace;font-size:12px;color:#d8f0c8;">
+  <span>📱 A version built for phones is ready — bigger touch targets, no cramped menus.</span>
+  <span style="display:flex;gap:8px;flex-shrink:0;">
+    <a href="mobile-v1.html" style="background:#3a7a2a;color:#fff;padding:6px 12px;border-radius:4px;text-decoration:none;white-space:nowrap;">Switch →</a>
+    <button onclick="dismissMobileBanner()" style="background:none;border:1px solid #5aaa3a;color:#88dd55;border-radius:4px;padding:6px 10px;cursor:pointer;">✕</button>
+  </span>
+</div>
+<script>
+(function() {
+  var DISMISS_KEY = 'eagleeyes_mobile_banner_dismissed';
+  window.dismissMobileBanner = function() {
+    localStorage.setItem(DISMISS_KEY, '1');
+    document.getElementById('mobile-banner').style.display = 'none';
+  };
+  var isSmallScreen = Math.min(window.innerWidth, window.innerHeight) < 700 || window.innerWidth < 820;
+  var alreadyDismissed = localStorage.getItem(DISMISS_KEY) === '1';
+  if (isSmallScreen && !alreadyDismissed) {
+    document.getElementById('mobile-banner').style.display = 'flex';
+  }
+})();
+</script>
+
 <!-- Loading -->
 <div id="loading">
   <h1>🦅 EAGLE EYES SLV</h1>

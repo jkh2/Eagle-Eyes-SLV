@@ -123,12 +123,16 @@ No server. No backend. No build process. No subscription fees. Open the HTML fil
 - Tabbed interface: Air / Space / Weather / Ground / OSINT / Cams / Keys
 - ESRI World Imagery satellite basemap
 
+### Mobile
+
+- **[mobile-v1.html](https://jkh2.github.io/Eagle-Eyes-SLV/mobile-v1.html)** — a ground-up mobile build, not a shrunk desktop page. Bottom tab nav (Map / Fires / Cams / Weather), big touch targets, a bottom-sheet camera viewer instead of a modal, and a top alert strip for anything real (large fires, M3+ quakes, high wind). Deliberately narrower scope than the desktop dashboard — four field-relevant streams instead of fifteen — same free no-key data sources underneath (NWS, USGS, NASA EONET + NIFC WFIGS, CDOT cameras).
+
 ---
 
 ## Quickstart
 
 1. Open any modern browser (Chrome recommended)
-2. **[Try Eagle Eyes SLV](https://jkh2.github.io/Eagle-Eyes-SLV/)**
+2. **[Try Eagle Eyes SLV](https://jkh2.github.io/Eagle-Eyes-SLV/)** · **[Mobile version](https://jkh2.github.io/Eagle-Eyes-SLV/mobile-v1.html)**
 3. Everything loads immediately — no keys required for 13 of 15 streams
 4. **For AI features (free):** Sign up at [openrouter.ai](https://openrouter.ai) → Settings → Keys → Create key → paste in KEYS tab → Save → Test Connection
 5. Optional: Google Maps JS API key for live traffic overlay
@@ -139,7 +143,7 @@ No server. No backend. No build process. No subscription fees. Open the HTML fil
 
 | Version | Date | Changes |
 |---------|------|---------|
-| v5.2 | August 2026 | Embedded live CDOT camera feeds — click any camera marker or CAMS entry to view the actual live image in an in-dashboard popup (multi-angle switcher, auto-refresh, honest offline/no-coverage states) instead of navigating away to COtrip.org. Replaces 3 hand-placed markers that never corresponded to real CDOT cameras (Villa Grove, Cumbres Pass, North Pass/Cochetopa — kept visible but honestly labeled rather than removed silently); relocated the old "CO/NM Border" marker to Fort Garland, the nearest location with an actual camera. Home-radius filter (v5.1.1, July 22) confirmed still live. |
+| v5.2 | August 2026 | Embedded live CDOT camera feeds — click any camera marker or CAMS entry to view the actual live image in an in-dashboard popup (multi-angle switcher, auto-refresh, honest offline/no-coverage states) instead of navigating away to COtrip.org. Replaces 3 hand-placed markers that never corresponded to real CDOT cameras (Villa Grove, Cumbres Pass, North Pass/Cochetopa — kept visible but honestly labeled rather than removed silently); relocated the old "CO/NM Border" marker to Fort Garland, the nearest location with an actual camera. Home-radius filter (v5.1.1, July 22) confirmed still live. Same night: **mobile-v1.html** — a genuinely separate, ground-up mobile page (bottom tab nav, bottom-sheet camera viewer, four focused streams), not a responsive shrink of the desktop layout. |
 | v5.1 | July 2026 | NASA VIIRS satellite fire hotspot layer, USGS Quaternary fault lines (15 faults, Rio Grande Rift), AI model fallback chain (4 models), test/clear key buttons, power outage + Watch Duty OSINT links, mobile layout fixes |
 | v5.0 | June 2026 | Dual-source fire detection (EONET + NIFC WFIGS), enriched fire inspector (15 fields + distance), smooth aircraft tracking, NEXRAD radar, OpenRouter free AI (brief + chat), mobile responsive, tactical sound engine |
 | v4.1 | March 2026 | USGS stream gauges, MRDS mineral deposits, NUFORC UFO sightings (139 records), traffic moved to Ground tab |
@@ -225,6 +229,7 @@ For more: **[jameskeithharwood.com](https://jameskeithharwood.com)**
 - [x] Stream gauges, mineral deposits, UFO sightings
 - [x] 12 CDOT camera locations
 - [x] Embedded live camera feeds — in-dashboard popup, no tab-away
+- [x] Ground-up mobile page (mobile-v1.html) — bottom nav, bottom-sheet cameras, four focused streams
 
 ### Next Up
 - [ ] NRCS SNOTEL snowpack stations (14 SLV stations identified)
