@@ -835,6 +835,11 @@ body {
       <label for="tog-traffic">🚗 Road Traffic (needs Google key)</label>
       <div class="layer-count" id="cnt-traffic">needs key</div>
     </div>
+    <div class="layer-row">
+      <label class="toggle"><input type="checkbox" id="tog-cdot" checked onchange="toggleLayer('cdot')"><span class="tslider"></span></label>
+      <label for="tog-cdot">🚧 Road Incidents (CDOT live)</label>
+      <div class="layer-count" id="cnt-cdot">—</div>
+    </div>
 
     <div class="section-lbl">STREAM GAUGES — LIVE</div>
     <div id="water-list"><div class="info-box">Loading water data...</div></div>
@@ -1005,6 +1010,7 @@ let layers = {
   goesfire: null,
   nexrad:   null,
   traffic: null,
+  cdot:    null,
   water:   null,
   mineral: null,
   ufo:     null
@@ -1633,6 +1639,90 @@ async function fetchSpaceWeather() {
 
   } catch(e) {
     console.error('Space weather error:', e);
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  CDOT ROAD INCIDENTS — live, via our Cloudflare Worker proxy
+// ══════════════════════════════════════════════════
+//  Why a proxy: CDOT's data feed needs an API key, and this repo is public --
+//  a key in this file would be a published secret. The Worker holds the key
+//  server-side and adds the CORS headers CDOT's own endpoints don't send.
+//  Source + setup: worker/cotrip-proxy.js, worker/README.md
+const CDOT_PROXY = 'https://cotrip-proxy.jameskharwood2.workers.dev';
+
+async function fetchCDOTIncidents() {
+  const cnt = document.getElementById('cnt-cdot');
+  try {
+    const r = await fetch(`${CDOT_PROXY}/incidents`);
+    if (!r.ok) {
+      // Surface the Worker's own error text -- it is written to be diagnostic
+      // (missing secret, origin rejected, upstream 403) rather than generic.
+      let detail = `HTTP ${r.status}`;
+      try { const e = await r.json(); if (e && e.error) detail = e.error; } catch(_) {}
+      throw new Error(detail);
+    }
+    const d = await r.json();
+    const all = d.features || [];
+
+    layers.cdot.clearLayers();
+
+    // CDOT returns BOTH Point and MultiPoint geometry -- verified live against
+    // the real feed (a closure spanning a segment arrives as MultiPoint with
+    // start/end coords). An earlier version of this filter required
+    // coordinates[0] to be a number, which silently dropped every MultiPoint
+    // incident -- i.e. exactly the road closures that matter most. Normalize to
+    // a list of [lon,lat] pairs and keep anything with a point in the box.
+    const pointsOf = (f) => {
+      const g = f.geometry || {};
+      const c = g.coordinates;
+      if (!Array.isArray(c)) return [];
+      if (typeof c[0] === 'number' && typeof c[1] === 'number') return [c];       // Point
+      return c.filter(p => Array.isArray(p) && typeof p[0] === 'number' && typeof p[1] === 'number');
+    };
+    const inBox = ([lon, lat]) =>
+      lat >= BBOX.minLat && lat <= BBOX.maxLat && lon >= BBOX.minLon && lon <= BBOX.maxLon;
+
+    // Statewide feed -> keep only what's in the SLV monitoring box.
+    const local = all.filter(f => pointsOf(f).some(inBox));
+
+    local.forEach(f => {
+      const pts = pointsOf(f);
+      const [lon, lat] = pts.find(inBox) || pts[0];
+      const p = f.properties || {};
+      const closed = /closed/i.test(p.travelerInformationMessage || '');
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="font-size:18px;line-height:18px">${closed ? '⛔' : '🚧'}</div>`,
+        iconSize: [18,18], iconAnchor: [9,9]
+      });
+      L.marker([lat,lon], {icon})
+        .bindTooltip(`${p.type || 'Incident'} — ${p.routeName || ''}`.trim())
+        .on('click', () => showInspector({
+          title: `${closed ? '⛔' : '🚧'} ${p.type || 'Road Incident'}`,
+          rows: [
+            ['Route',    p.routeName || '—'],
+            ['Details',  p.travelerInformationMessage || '—'],
+            ['Injuries', (p.injuries ?? '—') + ''],
+            ['Started',  p.startTime ? new Date(p.startTime).toLocaleString() : '—'],
+            ['Updated',  p.lastUpdated ? new Date(p.lastUpdated).toLocaleString() : '—'],
+            ['Lat/Lon',  `${lat.toFixed(3)}, ${lon.toFixed(3)}`],
+          ]
+        }))
+        .addTo(layers.cdot);
+
+      if (closed) addAlert('warn', `⛔ ${p.routeName || 'Road'} closed — ${p.type || 'incident'}`);
+    });
+
+    // "0 incidents" is a real, good answer -- make it read as information, not
+    // as a panel that failed to load. (Same discipline as the silent NOAA bug.)
+    cnt.textContent = local.length ? `${local.length} local` : `0 local / ${all.length} CO`;
+    cnt.title = `${all.length} statewide, ${local.length} inside the SLV box`;
+
+  } catch (e) {
+    console.error('[CDOT] incident fetch failed:', e.message);
+    cnt.textContent = 'error';
+    cnt.title = String(e.message);
   }
 }
 
@@ -2979,6 +3069,9 @@ window.addEventListener('load', async () => {
   setLoadMsg('Checking space weather…');
   await fetchSpaceWeather();
 
+  setLoadMsg('Checking CDOT road incidents…');
+  await fetchCDOTIncidents();
+
   setLoadMsg('Loading seismic data…');
   await fetchEarthquakes();
 
@@ -3011,6 +3104,7 @@ window.addEventListener('load', async () => {
   setInterval(fetchWeather,     600000);
   setInterval(fetchSpaceWeather,300000);
   setInterval(fetchEarthquakes, 300000);
+  setInterval(fetchCDOTIncidents, 120000);   // road conditions change faster than quakes
   setInterval(fetchFires,       600000);
   setInterval(fetchWaterData,   600000);
 });
