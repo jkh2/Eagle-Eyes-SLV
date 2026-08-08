@@ -17,61 +17,75 @@ Two constraints, both verified directly rather than assumed:
    secret. It has to live somewhere else.
 
 A Cloudflare Worker fixes both: it calls CDOT server-side (no CORS there) and holds
-the key as a secret outside git. Free tier is 100,000 requests/day — far beyond what
-this dashboard needs, especially with the built-in 60s cache.
+the key as an encrypted secret outside git. Free tier is 100,000 requests/day — far
+beyond what this dashboard needs, especially with the built-in 60s cache.
 
-## Steps — these are yours, not Claude's
+## The API, as actually verified (Aug 7, 2026)
 
-Claude can't create accounts or handle the key in plaintext. Both steps below
-involve credentials, so you do them.
+| | |
+|---|---|
+| Base URL | `https://data.cotrip.org/api/v1` |
+| Auth | query parameter `?apiKey=<key>` — **not** an `Authorization` header |
+| Paging | `offset` |
 
-### 1. Register for the CDOT data feed
+Confirmed two ways: Colorado DFPC-CoE's own production ETL against this API
+([`dfpc-coe/etl-cotrip-incidents`](https://github.com/dfpc-coe/etl-cotrip-incidents),
+`task.ts`), and direct probing of the live host.
 
-Go to **https://manage-api.cotrip.org** and create a developer account.
+**Real endpoints** (camelCase, **case-sensitive** — `roadconditions` 404s,
+`roadConditions` works):
 
-> **Correction worth carrying:** `manage-api.cotrip.org` is the *registration
-> portal*, not the data host. It serves an Angular SPA shell (HTTP 200 + HTML) for
-> every path — including `/api/v1/incidents`, which makes it look like a working
-> API endpoint when it isn't. **Get the real feed base URL from the developer docs
-> after you log in**, then set `UPSTREAM_BASE` in `cotrip-proxy.js`. Don't trust
-> the placeholder currently in that file; it's a guess and is marked as one.
+`incidents` · `plannedEvents` · `weatherStations` · `roadConditions` · `signs` ·
+`speed` · `destinations`
 
-While you're in the docs, note the real auth style. The Worker currently sends
-`Authorization: Bearer <key>`; if CDOT wants `?apiKey=` or a custom header instead,
-that's a one-line change.
+The "Traveler Information" subscription covers the first four. The last three are
+real endpoints but may sit in a different subscription group — expect `403` there.
 
-### 2. Deploy the Worker
+> **How this was mapped without a key:** the API distinguishes `403 Not Authorized`
+> (endpoint exists, you're unauthorized) from `404 "The current request is not
+> defined by this API"` (no such endpoint). That's a genuinely discriminating
+> signal, so probing for 403s reveals the real surface. Worth contrasting with
+> cotrip's GraphQL layer names, where a deliberately bogus layer returns a clean
+> `0` results with no error — there, a zero proves nothing.
 
-```bash
-npm install -g wrangler
-wrangler login                      # opens your browser; you authorize
-wrangler init cotrip-proxy          # or drop this file into an existing project
-wrangler secret put COTRIP_API_KEY  # paste the key at the prompt — it goes
-                                    # straight into Cloudflare, never into git
-wrangler deploy
-```
+> **Two earlier guesses that were wrong**, kept here as a caution: the first draft
+> of this Worker used `data-api.cotrip.org` and `Authorization: Bearer`. Both were
+> plausible and both were wrong. `manage-api.cotrip.org` is the *registration
+> portal*, not the data host — it serves an Angular SPA shell (HTTP 200 + HTML) for
+> every path including `/api/v1/incidents`, which reads as a live endpoint but
+> isn't.
 
-Wrangler prompts for the key in your terminal. Don't paste it into chat — Claude
-never needs to see it, and shouldn't.
+## Setup — all point-and-click, no terminal needed
 
-### 3. Tell Claude the Worker URL
+Account creation and the key itself are James's steps by design; the key never
+passes through the assistant or this repo.
 
-The deployed URL (e.g. `https://cotrip-proxy.<you>.workers.dev`) is **not** a
-secret — it's just an address, and the Worker refuses any origin not on its
-allowlist. Hand that over and Claude wires the dashboard to it.
+1. **Free Cloudflare account** — cloudflare.com.
+2. **Workers & Pages → Create → Create Worker.** Name it `cotrip-proxy`, click
+   **Deploy** (deploys a placeholder — fine).
+3. **Edit code.** Replace everything with the contents of `cotrip-proxy.js`, then
+   **Deploy**.
+4. **Settings → Variables and Secrets → Add:**
+   - Name: `COTRIP_API_KEY`
+   - Value: your key from https://manage-api.cotrip.org
+   - Type: **Secret** (not "Text" — Secret encrypts it and hides it afterward)
+   - Save.
+
+The Worker URL (`https://cotrip-proxy.<you>.workers.dev`) is not a secret — it's an
+address, and the Worker refuses any origin not on its allowlist.
 
 ## Verify it works
 
 ```bash
-# Should return data:
+# Should return incident JSON:
 curl -H "Origin: https://jameskeithharwood.com" \
-     "https://cotrip-proxy.<you>.workers.dev/incidents?minLat=37&maxLat=38.5&minLon=-106.5&maxLon=-105"
+     "https://cotrip-proxy.<you>.workers.dev/incidents"
 
 # Should return 403 — proves it isn't an open proxy:
 curl -H "Origin: https://example.com" \
      "https://cotrip-proxy.<you>.workers.dev/incidents"
 
-# Should return 500 with a clear message if the secret was never set:
+# Should return a clear 500 if the secret was never set:
 #   {"error":"COTRIP_API_KEY secret is not configured on this Worker"}
 ```
 
@@ -84,8 +98,9 @@ announce itself.
 ## Security notes
 
 - **Origin allowlist** — only `jameskeithharwood.com`, `jkh2.github.io`, and
-  `localhost:8791` are accepted.
-- **Path allowlist** — only the named feeds are forwarded, so a leaked Worker URL
-  can't be used as a general-purpose relay.
-- **Key never reaches the browser.** It's injected server-side only.
+  `localhost:8791`.
+- **Feed allowlist** — only the named feeds are forwarded, so a leaked Worker URL
+  can't become a general-purpose relay.
+- **Key never reaches the browser**, and is deliberately excluded from the cache key
+  so it never becomes part of a cache identifier.
 - **60s cache** — keeps load off CDOT and well inside quota.

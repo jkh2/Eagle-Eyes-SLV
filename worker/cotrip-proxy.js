@@ -35,23 +35,34 @@ const ALLOWED_ORIGINS = [
   'http://localhost:8791',   // local testing (python -m http.server 8791)
 ];
 
-// Upstream paths this Worker will forward. Anything else is refused, so a
-// leaked Worker URL can't be turned into a general-purpose relay.
-const ALLOWED_PATHS = [
-  'incidents',
-  'roadconditions',
-  'weatherstations',
-  'plannedevents',
-  'speed',
-];
+// Upstream feeds this Worker will forward, keyed by the lowercase path callers
+// use. Values are CDOT's real endpoint names, which are camelCase and
+// CASE-SENSITIVE -- "roadconditions" 404s, "roadConditions" works.
+//
+// Verified Aug 7, 2026 without a key: this API discriminates usefully between
+// "endpoint exists but you're unauthorized" (403 Not Authorized) and "no such
+// endpoint" (404 "The current request is not defined by this API"), so the real
+// surface below was mapped by probing for 403s.
+//
+// James's subscription ("Traveler Information", Approved) covers the first four.
+// signs/speed/destinations are real endpoints but may belong to a different
+// subscription group -- expect 403 on those until confirmed.
+const FEEDS = {
+  incidents:      'incidents',
+  plannedevents:  'plannedEvents',
+  weatherstations:'weatherStations',
+  roadconditions: 'roadConditions',
+  signs:          'signs',
+  speed:          'speed',
+  destinations:   'destinations',
+};
 
-// Set once the real base URL is known from CDOT's post-registration docs.
-// NOTE (Aug 7, 2026): manage-api.cotrip.org is the REGISTRATION PORTAL, not the
-// data host -- it serves an Angular SPA shell (200 + HTML) for every path,
-// including /api/v1/incidents, which makes it look like a live endpoint when it
-// isn't. Confirm the actual feed base URL in the developer docs before trusting
-// this default.
-const UPSTREAM_BASE = 'https://data-api.cotrip.org/api/v1';
+// Base URL and auth style confirmed against Colorado DFPC-CoE's own production
+// ETL against this API (github.com/dfpc-coe/etl-cotrip-incidents, task.ts):
+//   new URL('/api/v1/incidents', 'https://data.cotrip.org/')
+//   url.searchParams.append('apiKey', token)
+// Auth is a QUERY PARAMETER, not an Authorization header.
+const UPSTREAM_BASE = 'https://data.cotrip.org/api/v1';
 
 const CACHE_SECONDS = 60; // Be a good citizen; also keeps us well under quota.
 
@@ -92,32 +103,45 @@ export default {
     }
 
     const url = new URL(request.url);
-    const feed = url.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
-    if (!ALLOWED_PATHS.includes(feed)) {
-      return deny(404, `Unknown feed "${feed}". Allowed: ${ALLOWED_PATHS.join(', ')}`, origin);
+    const requested = url.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    const feed = FEEDS[requested];
+    if (!feed) {
+      return deny(404, `Unknown feed "${requested}". Allowed: ${Object.keys(FEEDS).join(', ')}`, origin);
     }
 
-    // Forward only caller-supplied bbox-style params; never forward arbitrary headers.
+    // Forward only caller-supplied paging params; never forward arbitrary headers.
     const upstream = new URL(`${UPSTREAM_BASE}/${feed}`);
-    for (const k of ['minLat', 'maxLat', 'minLon', 'maxLon', 'limit', 'offset']) {
+    for (const k of ['offset', 'limit']) {
       const v = url.searchParams.get(k);
       if (v !== null) upstream.searchParams.set(k, v);
     }
+    // Auth goes on the query string (CDOT's scheme), added last and only here --
+    // it never reaches the browser.
+    upstream.searchParams.set('apiKey', env.COTRIP_API_KEY);
 
+    // Cache key deliberately EXCLUDES the apiKey, so the secret never becomes
+    // part of a cache identifier and a rotated key doesn't orphan the cache.
     const cache = caches.default;
-    const cacheKey = new Request(upstream.toString(), { method: 'GET' });
+    const keyless = new URL(upstream.toString());
+    keyless.searchParams.delete('apiKey');
+    const cacheKey = new Request(keyless.toString(), { method: 'GET' });
     let hit = await cache.match(cacheKey);
 
     if (!hit) {
       let res;
       try {
-        res = await fetch(upstream.toString(), {
-          headers: { 'Authorization': `Bearer ${env.COTRIP_API_KEY}`, 'Accept': 'application/json' },
-        });
+        res = await fetch(upstream.toString(), { headers: { 'Accept': 'application/json' } });
       } catch (e) {
         return deny(502, `Upstream fetch failed: ${e}`, origin);
       }
-      if (!res.ok) return deny(502, `Upstream returned ${res.status}`, origin);
+      if (!res.ok) {
+        // 403 here most likely means this feed isn't in the account's subscription
+        // group, which is a different problem from a bad key -- say so plainly.
+        const hint = res.status === 403
+          ? ' (403 = key rejected, or this feed is outside your subscription group)'
+          : '';
+        return deny(502, `Upstream returned ${res.status}${hint}`, origin);
+      }
 
       hit = new Response(res.body, res);
       hit.headers.set('Cache-Control', `public, max-age=${CACHE_SECONDS}`);
