@@ -2966,40 +2966,48 @@ function loadUFOSightings() {
 //          'none' = no CDOT camera exists at/near this location
 // ══════════════════════════════════════════════════
 const CAM_BASE = 'https://cocam.carsprogram.org';
+// Coordinates and view paths regenerated 2026-08-08 from CDOT's own cotrip.org
+// GraphQL mapFeaturesQuery (layerSlugs:["normalCameras"]) over the SLV bounding
+// box — not hand-placed. James caught the old Antonito pin sitting on a dirt
+// road; the real coordinate was ~30km off (lon -105.6579 vs the true -106.01535).
+// Villa Grove, Cumbres Pass, and North Pass/Cochetopa still have no CDOT camera
+// anywhere in this bbox, so those three keep their old approximate placeholder
+// coordinates — there's no source geometry to replace them with.
 const CDOT_CAMS = [
-  { name:'Antonito — CO 17 at US 285',   lat:37.0742, lon:-105.6579, route:'CO 17 / US 285',
+  { name:'Antonito — CO 17 at US 285',   lat:37.06886, lon:-106.01535, route:'CO 17 / US 285',
     status:'live',
     views:[{label:'East', path:'/Cellular/017W03900CAM1RHS-E.jpg'}] },
-  { name:'La Veta Pass — US 160',        lat:37.5029, lon:-105.2179, route:'US 160',
+  { name:'La Veta Pass — US 160',        lat:37.61717, lon:-105.19231, route:'US 160',
     status:'live',
     views:[{label:'East', path:'/Cellular/160W27840CAM1RHS-E.jpg'},
            {label:'West', path:'/Cellular/160W27840CAM1RHS-W.jpg'}] },
-  { name:'Wolf Creek Pass East — US 160', lat:37.4866, lon:-106.7952, route:'US 160',
+  { name:'Wolf Creek Pass East — US 160', lat:37.47636, lon:-106.7848, route:'US 160',
     status:'live',
     views:[{label:'East', path:'/Cellular/160E16820CAM1RHS-E.jpg'},
            {label:'West', path:'/Cellular/160E16820CAM1RHS-W.jpg'},
            {label:'Roadway', path:'/Cellular/160E16820CAM1RHS-Roadway.jpg'}] },
-  { name:'Wolf Creek Pass West — US 160', lat:37.4710, lon:-106.8400, route:'US 160',
+  { name:'Wolf Creek Pass West — US 160', lat:37.48654, lon:-106.82919, route:'US 160',
     status:'live',
     views:[{label:'View', path:'/Snapshots/160E16515CAM2RHS.flv.png'}] },
-  { name:'Center — CO 112 at US 285',    lat:37.7536, lon:-106.1091, route:'CO 112',
+  { name:'Center — CO 112 at US 285',    lat:37.74824, lon:-106.14882, route:'CO 112',
     status:'live',
-    views:[{label:'South', path:'/Cellular/112W01315CAM1NEC-S.jpg'},
+    views:[{label:'East', path:'/Cellular/112W01315CAM1NEC-E.jpg'},
+           {label:'North', path:'/Cellular/112W01315CAM1NEC-N.jpg'},
+           {label:'South', path:'/Cellular/112W01315CAM1NEC-S.jpg'},
            {label:'West', path:'/Cellular/112W01315CAM1NEC-W.jpg'}] },
-  { name:'Poncha Pass — US 285',         lat:38.4184, lon:-106.0657, route:'US 285',
-    // Real camera (US 285 MP 119.10 SB, Looking North/South) confirmed to exist
-    // on cotrip.org, but it's reporting no signal there too — its own frontend
-    // never requests an image URL while offline, so there's no way to observe
-    // the real image path right now. Left empty rather than guessed; if CDOT
-    // brings it back online, re-check cotrip.org/list/cameras and fill this in
-    // for real instead of inferring it from the naming pattern of other cameras.
+  { name:'Poncha Pass — US 285',         lat:38.42206, lon:-106.08816, route:'US 285',
+    // Real camera (US 285 MP 119.10 SB at Poncha Pass, camera/985) confirmed to
+    // exist in CDOT's own geometry, still reporting no signal — all three view
+    // slots return url:null from the source query itself, not an inference.
+    // Left empty rather than guessed; if CDOT brings it back online, re-run the
+    // normalCameras query and fill this in from source, not from naming pattern.
     status:'offline', views:[] },
   { name:'Villa Grove — US 285',         lat:38.2541, lon:-105.9677, route:'US 285',
     status:'none' },
-  { name:'South Fork — US 160 at CO 149', lat:37.6716, lon:-106.6397, route:'US 160',
+  { name:'South Fork — US 160 at CO 149', lat:37.66917, lon:-106.641, route:'US 160',
     status:'live',
     views:[{label:'View', path:'/Snapshots/160W18610CAM1RHS.flv.png'}] },
-  { name:'Fort Garland — US 160 at CO 159', lat:37.4236, lon:-105.4325, route:'US 160',
+  { name:'Fort Garland — US 160 at CO 159', lat:37.4273, lon:-105.4309, route:'US 160',
     status:'live',
     views:[{label:'East', path:'/Cellular/160W25825CAM1NEC-E.jpg'},
            {label:'South', path:'/Cellular/160W25825CAM1NEC-S.jpg'},
@@ -3008,7 +3016,7 @@ const CDOT_CAMS = [
     status:'none' },
   { name:'North Pass/Cochetopa — CO 114',lat:38.1380, lon:-106.5920, route:'CO 114',
     status:'none' },
-  { name:'Monte Vista — US 160 at US 285', lat:37.5792, lon:-106.1484, route:'US 160',
+  { name:'Monte Vista — US 160 at US 285', lat:37.58064, lon:-106.14973, route:'US 160',
     status:'live',
     views:[{label:'East', path:'/Cellular/160W21570CAM1NWC-E.jpg'},
            {label:'North', path:'/Cellular/160W21570CAM1NWC-N.jpg'},
