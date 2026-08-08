@@ -173,6 +173,44 @@ export default {
       ctx.waitUntil(cache.put(cacheKey, hit.clone()));
     }
 
+    // Optional bounding-box filter, applied HERE rather than upstream so the
+    // cached copy stays whole and one cache entry serves every bbox.
+    // Reason this exists: roadConditions returns ~3.6 MB statewide (dense
+    // LineString geometry). Sending that to a phone on cell data is not
+    // acceptable, and filtering in the browser would still transfer all of it.
+    const bbox = ['minLat','maxLat','minLon','maxLon'].map(k => parseFloat(url.searchParams.get(k)));
+    if (bbox.every(Number.isFinite)) {
+      const [minLat, maxLat, minLon, maxLon] = bbox;
+      try {
+        const data = await hit.clone().json();
+        if (data && Array.isArray(data.features)) {
+          const before = data.features.length;
+          data.features = data.features.filter(f => {
+            const g = f && f.geometry;
+            if (!g || !g.coordinates) return false;
+            // Handles Point ([lon,lat]) and LineString/MultiLineString (nested
+            // arrays): keep the feature if ANY vertex falls inside the box.
+            const anyInside = (c) => Array.isArray(c[0])
+              ? c.some(anyInside)
+              : (typeof c[0] === 'number' && typeof c[1] === 'number' &&
+                 c[1] >= minLat && c[1] <= maxLat && c[0] >= minLon && c[0] <= maxLon);
+            return anyInside(g.coordinates);
+          });
+          data.filtered = { before, after: data.features.length, bbox: { minLat, maxLat, minLon, maxLon } };
+          const body = JSON.stringify(data);
+          const filtered = new Response(body, { status: 200 });
+          filtered.headers.set('Content-Type', 'application/json');
+          for (const [k, v] of Object.entries(corsHeaders(origin))) filtered.headers.set(k, v);
+          filtered.headers.set('Cache-Control', `public, max-age=${CACHE_SECONDS}`);
+          return filtered;
+        }
+      } catch (e) {
+        // Filtering must never turn a working feed into a failure -- fall through
+        // and return the unfiltered payload rather than erroring the caller.
+        console.warn('bbox filter failed, returning unfiltered:', String(e));
+      }
+    }
+
     const out = new Response(hit.body, hit);
     for (const [k, v] of Object.entries(corsHeaders(origin))) out.headers.set(k, v);
     out.headers.set('Content-Type', 'application/json');
