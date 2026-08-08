@@ -198,6 +198,9 @@
   <div class="panel" id="panel-ground">
     <div class="section-title">Active Fires <span class="cnt" id="cnt-fire"></span></div>
     <div id="fire-cards"><div class="empty-state">Loading fire data…</div></div>
+    <div class="section-title">Road Incidents — CDOT live <span class="cnt" id="cnt-roads"></span></div>
+    <div id="road-cards"><div class="empty-state">Loading road incidents…</div></div>
+
     <div class="section-title">Recent Seismic — 120mi <span class="cnt" id="cnt-quake"></span></div>
     <div id="quake-cards"><div class="empty-state">Loading seismic data…</div></div>
     <div class="section-title">Stream Gauges <span class="cnt" id="cnt-water"></span></div>
@@ -346,9 +349,10 @@ const layerGroups = {
   water: L.layerGroup(),
   minerals: L.layerGroup(),
   faults: L.layerGroup(),
+  roads: L.layerGroup().addTo(map),
 };
 const LAYER_LABELS = { fires:'🔥 Fires', aircraft:'✈ Air', cams:'📷 Cams', quakes:'🔴 Quakes',
-  water:'💧 Water', minerals:'💎 Minerals', faults:'🔶 Faults' };
+  roads:'🚧 Roads', water:'💧 Water', minerals:'💎 Minerals', faults:'🔶 Faults' };
 function renderLayerToggles() {
   const row = document.getElementById('layer-toggle-row');
   row.innerHTML = Object.keys(layerGroups).map(k => {
@@ -649,6 +653,68 @@ async function fetchQuakes() {
 }
 
 // ══════════════════════════════════════════════════
+//  CDOT ROAD INCIDENTS — live, via our Cloudflare Worker proxy
+// ══════════════════════════════════════════════════
+//  Same proxy as index.html. CDOT's feed needs an API key and sends no CORS
+//  headers, so a static public page can't call it directly. See worker/README.md
+const CDOT_PROXY = 'https://cotrip-proxy.jameskharwood2.workers.dev';
+
+// CDOT returns BOTH Point and MultiPoint -- a closure spanning a segment arrives
+// as MultiPoint. Requiring coordinates[0] to be a number silently drops exactly
+// those, so normalize to a list of [lon,lat] pairs. (Verified against the live
+// feed; this bug was caught on the desktop page before it shipped.)
+function cdotPoints(f) {
+  const c = (f.geometry || {}).coordinates;
+  if (!Array.isArray(c)) return [];
+  if (typeof c[0] === 'number' && typeof c[1] === 'number') return [c];
+  return c.filter(p => Array.isArray(p) && typeof p[0] === 'number' && typeof p[1] === 'number');
+}
+
+async function fetchRoads() {
+  try {
+    const r = await fetch(`${CDOT_PROXY}/incidents`);
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`;
+      try { const e = await r.json(); if (e && e.error) detail = e.error; } catch(_) {}
+      throw new Error(detail);
+    }
+    const all = (await r.json()).features || [];
+    const inBox = ([lon,lat]) => lat>=BBOX.minLat && lat<=BBOX.maxLat && lon>=BBOX.minLon && lon<=BBOX.maxLon;
+    const local = all.filter(f => cdotPoints(f).some(inBox));
+
+    layerGroups.roads.clearLayers();
+    local.forEach(f => {
+      const pts = cdotPoints(f);
+      const [lon,lat] = pts.find(inBox) || pts[0];
+      const p = f.properties || {};
+      const closed = /closed/i.test(p.travelerInformationMessage || '');
+      const icon = L.divIcon({ className:'',
+        html:`<div style="font-size:16px;line-height:16px">${closed?'⛔':'🚧'}</div>`,
+        iconSize:[16,16], iconAnchor:[8,8] });
+      L.marker([lat,lon],{icon})
+        .bindTooltip(`${p.type||'Incident'} — ${p.routeName||''}`.trim())
+        .addTo(layerGroups.roads);
+      if (closed) pushAlert(`${p.routeName||'Road'} closed — ${p.type||'incident'}`);
+    });
+
+    document.getElementById('cnt-roads').textContent = local.length + ' local';
+    document.getElementById('road-cards').innerHTML = local.length ? local.map(f => {
+      const p = f.properties || {};
+      const closed = /closed/i.test(p.travelerInformationMessage || '');
+      return `<div class="card"><div class="card-title">${closed?'⛔':'🚧'} ${p.routeName||'Road'} — ${p.type||'Incident'}</div>
+        <div class="card-sub">${(p.travelerInformationMessage||'').slice(0,150)}</div>
+        <span class="card-badge ${closed?'badge-danger':'badge-warn'}">${closed?'CLOSED':'INCIDENT'}</span></div>`;
+    }).join('')
+      // "None nearby" is real information, not a failure -- say which it is.
+      : `<div class="empty-state">No road incidents in the valley right now (${all.length} statewide).</div>`;
+  } catch(e) {
+    console.error('[Roads]', e);
+    document.getElementById('cnt-roads').textContent = 'error';
+    document.getElementById('road-cards').innerHTML = `<div class="empty-state">Road data unavailable — ${e.message}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════
 //  FIRES — NASA EONET + NIFC WFIGS
 // ══════════════════════════════════════════════════
 async function fetchFires() {
@@ -840,6 +906,7 @@ async function fetchFaults() {
 // ══════════════════════════════════════════════════
 renderCamCards();
 fetchWeather();
+fetchRoads();
 fetchQuakes();
 fetchFires();
 fetchAircraft();
@@ -851,6 +918,7 @@ fetchFaults();
 
 setInterval(fetchWeather, 10*60*1000);
 setInterval(fetchQuakes, 5*60*1000);
+setInterval(fetchRoads, 2*60*1000);   // roads change faster than seismic
 setInterval(fetchFires, 10*60*1000);
 setInterval(fetchAircraft, 15*1000);
 setInterval(fetchSpaceWeather, 5*60*1000);
