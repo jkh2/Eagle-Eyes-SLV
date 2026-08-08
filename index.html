@@ -1144,11 +1144,51 @@ function playSound(name) {
 function initMap() {
   map = L.map('map', { zoomControl:true }).setView([SLV.lat, SLV.lon], SLV.zoom);
 
-  // Default basemap — ESRI satellite (better for rural Colorado)
-  L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { attribution:'© Esri World Imagery', maxZoom:18 }
+  // ── BASEMAPS ────────────────────────────────────────────────────────────
+  // Satellite alone carries no road names, which is a real problem when the
+  // point is knowing which pass or county road something is on. All Esri, all
+  // keyless, all verified live before use.
+  const esri = (path, attr) => L.tileLayer(
+    `https://server.arcgisonline.com/ArcGIS/rest/services/${path}/MapServer/tile/{z}/{y}/{x}`,
+    { attribution: attr, maxZoom: 18 }
+  );
+
+  const baseSatellite = esri('World_Imagery',    '© Esri World Imagery');
+  const baseTopo      = esri('World_Topo_Map',   '© Esri World Topo');
+  const baseStreets   = esri('World_Street_Map', '© Esri World Street Map');
+
+  // Road/place labels as a transparent overlay -- this is what turns plain
+  // satellite into "hybrid", and it can ride on top of any basemap.
+  const roadLabels = L.layerGroup([
+    esri('Reference/World_Transportation',        '© Esri'),
+    esri('Reference/World_Boundaries_and_Places',  '© Esri'),
+  ]);
+
+  baseSatellite.addTo(map);   // keep the existing default
+
+  L.control.layers(
+    { '🛰 Satellite': baseSatellite, '⛰ Topographic': baseTopo, '🗺 Streets': baseStreets },
+    { '🛣 Road Names & Labels': roadLabels },
+    { position: 'topright', collapsed: true }
   ).addTo(map);
+
+  // Remember the choice between visits -- a basemap you have to re-pick every
+  // time is a basemap you stop using.
+  try {
+    const savedBase = localStorage.getItem('ee_basemap');
+    if (savedBase === 'topo')    { map.removeLayer(baseSatellite); baseTopo.addTo(map); }
+    if (savedBase === 'streets') { map.removeLayer(baseSatellite); baseStreets.addTo(map); }
+    if (localStorage.getItem('ee_labels') === '1') roadLabels.addTo(map);
+  } catch(_) {}
+
+  map.on('baselayerchange', e => {
+    try {
+      localStorage.setItem('ee_basemap',
+        e.layer === baseTopo ? 'topo' : e.layer === baseStreets ? 'streets' : 'satellite');
+    } catch(_) {}
+  });
+  map.on('overlayadd',    e => { if (e.layer === roadLabels) { try{ localStorage.setItem('ee_labels','1'); }catch(_){} } });
+  map.on('overlayremove', e => { if (e.layer === roadLabels) { try{ localStorage.setItem('ee_labels','0'); }catch(_){} } });
 
   // All data layer groups
   Object.keys(layers).forEach(k => {
