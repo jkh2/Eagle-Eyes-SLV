@@ -66,6 +66,22 @@ const UPSTREAM_BASE = 'https://data.cotrip.org/api/v1';
 
 const CACHE_SECONDS = 60; // Be a good citizen; also keeps us well under quota.
 
+// Accepted names for the API-key secret, in preference order. COTRIP_API_KEY is
+// the intended one, but Cloudflare's dashboard makes it easy to land on a
+// differently-cased or dashed name (and its Worker-name field enforces
+// lowercase-and-dashes, which is easy to mistake for the variable-name rule).
+// Rather than make the deploy depend on getting a label exactly right, accept
+// any of these and report clearly when none is present.
+const KEY_NAMES = ['COTRIP_API_KEY', 'cotrip-api-key', 'cotrip_api_key', 'COTRIP_KEY', 'cotrip-proxy'];
+
+function resolveKey(env) {
+  for (const n of KEY_NAMES) {
+    const v = env[n];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
@@ -95,18 +111,27 @@ export default {
     if (request.method !== 'GET') return deny(405, 'Method not allowed', origin);
     if (!allowed) return deny(403, 'Origin not allowed', 'null');
 
-    if (!env.COTRIP_API_KEY) {
-      // Fail loudly. A silent empty result here would reproduce exactly the bug
-      // this dashboard just fixed in fetchSpaceWeather(): a dead data path that
-      // looked fine because nothing ever reported it.
-      return deny(500, 'COTRIP_API_KEY secret is not configured on this Worker', origin);
-    }
-
+    // Validate the REQUEST before reporting on server config: a bad path should
+    // be reported as a bad path regardless of whether the key happens to be set.
     const url = new URL(request.url);
     const requested = url.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
     const feed = FEEDS[requested];
     if (!feed) {
       return deny(404, `Unknown feed "${requested}". Allowed: ${Object.keys(FEEDS).join(', ')}`, origin);
+    }
+
+    const apiKey = resolveKey(env);
+    if (!apiKey) {
+      // Fail loudly, and name what was actually looked for vs. what exists, so a
+      // naming mismatch is diagnosable at a glance. A silent empty result here
+      // would reproduce exactly the bug this dashboard just fixed in
+      // fetchSpaceWeather(): a dead data path that looked fine because nothing
+      // ever reported it. (Only binding NAMES are listed -- never values.)
+      const present = Object.keys(env).filter(k => typeof env[k] === 'string');
+      return deny(500,
+        `No API key secret found. Looked for: ${KEY_NAMES.join(', ')}. ` +
+        `Secrets currently bound: ${present.length ? present.join(', ') : '(none)'}`,
+        origin);
     }
 
     // Forward only caller-supplied paging params; never forward arbitrary headers.
@@ -117,7 +142,7 @@ export default {
     }
     // Auth goes on the query string (CDOT's scheme), added last and only here --
     // it never reaches the browser.
-    upstream.searchParams.set('apiKey', env.COTRIP_API_KEY);
+    upstream.searchParams.set('apiKey', apiKey);
 
     // Cache key deliberately EXCLUDES the apiKey, so the secret never becomes
     // part of a cache identifier and a rotated key doesn't orphan the cache.
