@@ -334,9 +334,44 @@ function sheetRows(rows) {
 // ── Map + layer toggles ──
 const map = L.map('map', { zoomControl:false, attributionControl:true }).setView([37.5, -105.9], 8);
 L.control.zoom({ position:'topright' }).addTo(map);
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  attribution:'© Esri World Imagery', maxZoom:18
-}).addTo(map);
+// ── BASEMAPS ──────────────────────────────────────────────────────────────
+// Satellite alone shows no road names, which matters most on a phone in the
+// truck. Same three Esri basemaps as the desktop page, plus a labels overlay
+// that composes with any of them (satellite + labels = hybrid).
+const esriTile = (path, attr) => L.tileLayer(
+  `https://server.arcgisonline.com/ArcGIS/rest/services/${path}/MapServer/tile/{z}/{y}/{x}`,
+  { attribution: attr, maxZoom: 18 }
+);
+const BASEMAPS = {
+  satellite: { label:'🛰 Sat',    layer: esriTile('World_Imagery',    '© Esri World Imagery') },
+  topo:      { label:'⛰ Topo',   layer: esriTile('World_Topo_Map',   '© Esri World Topo') },
+  streets:   { label:'🗺 Streets', layer: esriTile('World_Street_Map', '© Esri World Street Map') },
+};
+const roadLabels = L.layerGroup([
+  esriTile('Reference/World_Transportation',       '© Esri'),
+  esriTile('Reference/World_Boundaries_and_Places', '© Esri'),
+]);
+
+let activeBasemap = 'satellite';
+try { const s = localStorage.getItem('ee_basemap'); if (s && BASEMAPS[s]) activeBasemap = s; } catch(_) {}
+BASEMAPS[activeBasemap].layer.addTo(map);
+try { if (localStorage.getItem('ee_labels') === '1') roadLabels.addTo(map); } catch(_) {}
+
+function setBasemap(key) {
+  if (!BASEMAPS[key] || key === activeBasemap) return;
+  map.removeLayer(BASEMAPS[activeBasemap].layer);
+  BASEMAPS[key].layer.addTo(map);
+  BASEMAPS[key].layer.bringToBack();     // keep data layers above the basemap
+  activeBasemap = key;
+  try { localStorage.setItem('ee_basemap', key); } catch(_) {}
+  renderLayerToggles();
+}
+function toggleRoadLabels() {
+  const on = map.hasLayer(roadLabels);
+  if (on) map.removeLayer(roadLabels); else roadLabels.addTo(map);
+  try { localStorage.setItem('ee_labels', on ? '0' : '1'); } catch(_) {}
+  renderLayerToggles();
+}
 L.marker([HOME.lat, HOME.lon], {
   icon: L.divIcon({ className:'', html:'<div style="font-size:18px;">🏠</div>', iconSize:[22,22], iconAnchor:[11,11] })
 }).addTo(map).bindTooltip('Home');
@@ -355,10 +390,19 @@ const LAYER_LABELS = { fires:'🔥 Fires', aircraft:'✈ Air', cams:'📷 Cams',
   roads:'🚧 Roads', water:'💧 Water', minerals:'💎 Minerals', faults:'🔶 Faults' };
 function renderLayerToggles() {
   const row = document.getElementById('layer-toggle-row');
-  row.innerHTML = Object.keys(layerGroups).map(k => {
+  // Basemap chips first (mutually exclusive), then the labels overlay, then the
+  // data layers. A Leaflet layers control is too fiddly for touch; chips match
+  // the rest of this page.
+  const baseChips = Object.entries(BASEMAPS).map(([k,v]) =>
+    `<button class="layer-chip${k===activeBasemap?' on':''}" onclick="setBasemap('${k}')">${v.label}</button>`
+  ).join('');
+  const labelChip =
+    `<button class="layer-chip${map.hasLayer(roadLabels)?' on':''}" onclick="toggleRoadLabels()">🛣 Names</button>`;
+  const dataChips = Object.keys(layerGroups).map(k => {
     const on = map.hasLayer(layerGroups[k]);
     return `<button class="layer-chip${on?' on':''}" onclick="toggleLayer('${k}')">${LAYER_LABELS[k]}</button>`;
   }).join('');
+  row.innerHTML = baseChips + labelChip + dataChips;
 }
 function toggleLayer(key) {
   const g = layerGroups[key];
