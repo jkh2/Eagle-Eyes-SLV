@@ -519,12 +519,21 @@ async function fetchSpaceWeather() {
     document.getElementById('sw-signal').textContent = signal;
     if (kp >= 5) pushAlert(`Elevated Kp=${kp} — possible signal interference`);
 
-    const r2 = await fetch('https://services.swpc.noaa.gov/products/solar-wind/plasma-2-hour.json');
+    // NOAA retired /products/solar-wind/ entirely -- the whole directory 404s,
+    // not just plasma-2-hour.json. The summary endpoint is the current source
+    // and returns [{proton_speed, time_tag}]. Same fix applied to index.html.
+    const r2 = await fetch('https://services.swpc.noaa.gov/products/summary/solar-wind-speed.json');
     if (r2.ok) {
       const d2 = await r2.json();
-      const wind = parseFloat(d2[d2.length-1][2]);
-      document.getElementById('sw-wind').textContent = wind.toFixed(0) + ' km/s';
-      if (wind > 600) pushAlert(`High solar wind: ${wind.toFixed(0)} km/s`);
+      const wind = parseFloat(d2[0] && d2[0].proton_speed);
+      if (Number.isFinite(wind)) {
+        document.getElementById('sw-wind').textContent = wind.toFixed(0) + ' km/s';
+        if (wind > 600) pushAlert(`High solar wind: ${wind.toFixed(0)} km/s`);
+      } else {
+        console.warn('[SpaceWeather] unexpected solar wind payload', d2);
+      }
+    } else {
+      console.warn('[SpaceWeather] solar wind endpoint failed:', r2.status);
     }
   } catch(e) { console.error('[SpaceWeather]', e); }
 }

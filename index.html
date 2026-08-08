@@ -1594,9 +1594,12 @@ async function fetchSpaceWeather() {
     const r = await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json');
     if (!r.ok) throw new Error('SWPC fail');
     const d = await r.json();
-    // Last entry: [datetime, kp, observed, noaa_scale]
+    // NOAA returns an array of OBJECTS: {time_tag, Kp, a_running, station_count}
+    // -- verified live against the endpoint. It is not an array of arrays and has
+    // no header row, so positional access (last[1]) yields undefined -> NaN.
     const last = d[d.length-1];
-    const kp   = parseFloat(last[1]);
+    const kp   = typeof last.Kp === 'number' ? last.Kp : parseFloat(last.Kp);
+    if (!Number.isFinite(kp)) throw new Error('SWPC Kp parse failed');
 
     let kpClass = 'ok', aurora = 'Unlikely', signal = 'Normal';
     if (kp >= 7)      { kpClass='danger'; aurora='Possible SLV!';  signal='Disrupted'; }
@@ -1607,14 +1610,23 @@ async function fetchSpaceWeather() {
     setEl ('sw-aurora', aurora);
     setEl ('sw-signal', signal);
 
-    // Solar wind speed
-    const r2 = await fetch('https://services.swpc.noaa.gov/products/solar-wind/plasma-2-hour.json');
+    // Solar wind speed. NOAA retired /products/solar-wind/ entirely -- the whole
+    // directory 404s, not just the old plasma-2-hour.json file. The summary
+    // endpoint is the current source and returns [{proton_speed, time_tag}].
+    // Failure is logged rather than silently swallowed: the old dead URL sat
+    // behind a bare `if (r2.ok)` and left this field blank with no console error.
+    const r2 = await fetch('https://services.swpc.noaa.gov/products/summary/solar-wind-speed.json');
     if (r2.ok) {
       const d2 = await r2.json();
-      const last2 = d2[d2.length-1];
-      const windSpd = parseFloat(last2[2]); // km/s
-      setEl('sw-wind', `${windSpd.toFixed(0)} km/s`);
-      if (windSpd > 600) addAlert('warn', `☀ High solar wind: ${windSpd.toFixed(0)} km/s`);
+      const windSpd = parseFloat(d2[0] && d2[0].proton_speed); // km/s
+      if (Number.isFinite(windSpd)) {
+        setEl('sw-wind', `${windSpd.toFixed(0)} km/s`);
+        if (windSpd > 600) addAlert('warn', `☀ High solar wind: ${windSpd.toFixed(0)} km/s`);
+      } else {
+        console.warn('Solar wind: unexpected payload shape', d2);
+      }
+    } else {
+      console.warn('Solar wind endpoint failed:', r2.status);
     }
 
     if (kp >= 5) addAlert('warn', `☀ Elevated Kp=${kp} — possible signal interference`);
